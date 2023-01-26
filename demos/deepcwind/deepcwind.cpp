@@ -102,14 +102,15 @@ int main(int argc, char* argv[]) {
 	// define the body's initial conditions
 	system.Add(body);
 	body->SetNameString("body1");
-	body->SetPos(ChVector<>(0, 0, -0.72));
-	body->SetMass(725834);
-	body->SetInertiaXX(ChVector<>(20907301.0, 21306090.66, 37085481.11));
+	body->SetPos(ChVector<>(0.0, 0.0, 0.0));
+	body->SetMass(1.3473e7);
+	double par_axis = 1.3473e7 * 13.1677 * 13.1677; // The + 1.3473E7*13.1677^2; term can be omitted if || axis theorem is not being used
+	body->SetInertiaXX(ChVector<>(6.827e9 + par_axis, 6.827e9 + par_axis, 1.226e10 + par_axis)); 
 	//body->SetCollide(false);
 
 	// define wave parameters 
 	HydroInputs my_hydro_inputs;
-	my_hydro_inputs.mode = regular;
+	my_hydro_inputs.mode = noWaveCIC;
 	my_hydro_inputs.regular_wave_amplitude = 1.0;
 	my_hydro_inputs.regular_wave_omega = 2.10;
 
@@ -136,7 +137,8 @@ int main(int argc, char* argv[]) {
 		irrlichtVis->Initialize();
 		irrlichtVis->AddLogo();
 		irrlichtVis->AddSkyBox();
-		irrlichtVis->AddCamera(ChVector<>(0, -50, -10), ChVector<>(0, 0, -10)); // camera position and where it points
+		// camera position and where it points
+		irrlichtVis->AddCamera(ChVector<>(0, -50, -10), ChVector<>(0, 0, -10)); 
 		irrlichtVis->AddTypicalLights();
 
 		// add play/pause button
@@ -187,7 +189,8 @@ int main(int argc, char* argv[]) {
 		profilingFile.open("./results/deepcwind/reg_waves/duration_ms.txt");
 		if (!profilingFile.is_open()) {
 			if (!std::filesystem::exists("./results/deepcwind/reg_waves")) {
-				std::cout << "Path " << std::filesystem::absolute("./results/deepcwind/reg_waves") << " does not exist, creating it now..." << std::endl;
+				std::cout << "Path " << std::filesystem::absolute("./results/deepcwind/reg_waves") 
+					<< " does not exist, creating it now..." << std::endl;
 				std::filesystem::create_directory("./results");
 				std::filesystem::create_directory("./results/deepcwind");
 				std::filesystem::create_directory("./results/deepcwind/reg_waves");
@@ -207,7 +210,8 @@ int main(int argc, char* argv[]) {
 		outputFile.open("./results/deepcwind/reg_waves/deepcwind_reg_waves.txt");
 		if (!outputFile.is_open()) {
 			if (!std::filesystem::exists("./results/deepcwind/reg_waves")) {
-				std::cout << "Path " << std::filesystem::absolute("./results/deepcwind/reg_waves") << " does not exist, creating it now..." << std::endl;
+				std::cout << "Path " << std::filesystem::absolute("./results/deepcwind/reg_waves") 
+					<< " does not exist, creating it now..." << std::endl;
 				std::filesystem::create_directory("./results");
 				std::filesystem::create_directory("./results/deepcwind");
 				std::filesystem::create_directory("./results/deepcwind/reg_waves");
@@ -224,8 +228,9 @@ int main(int argc, char* argv[]) {
 			//<< std::right << std::setw(16) << "Float Drift (x) (m)"
 			<< std::endl;
 		for (int i = 0; i < time_vector.size(); ++i)
-			outputFile << std::left << std::setw(10) << std::setprecision(2) << std::fixed << time_vector[i]
-			<< std::right << std::setw(16) << std::setprecision(4) << std::fixed << body_heave_pos[i]
+			outputFile << std::left << std::setw(10) << std::setprecision(2) << std::fixed 
+			<< time_vector[i] << std::right << std::setw(16) << std::setprecision(4) 
+			<< std::fixed << body_heave_pos[i]
 			//<< std::right << std::setw(16) << std::setprecision(4) << std::fixed << plate_heave_position[i]
 			//<< std::right << std::setw(16) << std::setprecision(4) << std::fixed << float_drift_position[i]
 			<< std::endl;
