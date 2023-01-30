@@ -102,10 +102,9 @@ int main(int argc, char* argv[]) {
 	// define the body's initial conditions
 	system.Add(body);
 	body->SetNameString("body1");
-	body->SetPos(ChVector<>(0.0, 0.0, 0.0));
-	body->SetMass(1.3473e7);
-	double par_axis = 1.3473e7 * 13.1677 * 13.1677; // The + 1.3473E7*13.1677^2; term can be omitted if || axis theorem is not being used
-	body->SetInertiaXX(ChVector<>(6.827e9 + par_axis, 6.827e9 + par_axis, 1.226e10 + par_axis)); 
+	body->SetPos(ChVector<>(0.0, 0.0, -12));
+	body->SetMass(1.407e7);
+	body->SetInertiaXX(ChVector<>(1.2898e10, 1.2851e10, 1.4189e10)); 
 	//body->SetCollide(false);
 
 	// define wave parameters 
