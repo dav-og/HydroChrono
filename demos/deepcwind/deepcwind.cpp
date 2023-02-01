@@ -67,7 +67,7 @@ int main(int argc, char* argv[]) {
 
 	// system/solver settings
 	ChSystemNSC system;
-	system.Set_G_acc(ChVector<>(0.0, 0.0, -9.81));
+	system.Set_G_acc(ChVector<>(0.0, 0.0, -9.8124));
 	double timestep = 0.08;
 	system.SetTimestepperType(ChTimestepper::Type::HHT);
 	system.SetSolverType(ChSolver::Type::GMRES);
@@ -102,8 +102,10 @@ int main(int argc, char* argv[]) {
 	// define the body's initial conditions
 	system.Add(body);
 	body->SetNameString("body1");
-	body->SetPos(ChVector<>(0.0, 0.0, -12));
-	body->SetMass(1.407e7);
+	body->SetPos(ChVector<>(0.0, 0.0, 0.0));
+	double ang_rad = -3.391 * CH_C_PI / 180.0;
+	body->SetRot(Q_from_AngAxis(ang_rad, VECT_Y));
+	body->SetMass(1.419625e7);
 	body->SetInertiaXX(ChVector<>(1.2898e10, 1.2851e10, 1.4189e10)); 
 	//body->SetCollide(false);
 
@@ -137,7 +139,7 @@ int main(int argc, char* argv[]) {
 		irrlichtVis->AddLogo();
 		irrlichtVis->AddSkyBox();
 		// camera position and where it points
-		irrlichtVis->AddCamera(ChVector<>(0, -50, -10), ChVector<>(0, 0, -10)); 
+		irrlichtVis->AddCamera(ChVector<>(20, -60, -10), ChVector<>(0, 0, -10)); 
 		irrlichtVis->AddTypicalLights();
 
 		// add play/pause button
@@ -185,15 +187,15 @@ int main(int argc, char* argv[]) {
 
 	if (profilingOn) {
 		std::ofstream profilingFile;
-		profilingFile.open("./results/deepcwind/reg_waves/duration_ms.txt");
+		profilingFile.open("./results/deepcwind/decay/duration_ms.txt");
 		if (!profilingFile.is_open()) {
-			if (!std::filesystem::exists("./results/deepcwind/reg_waves")) {
-				std::cout << "Path " << std::filesystem::absolute("./results/deepcwind/reg_waves") 
+			if (!std::filesystem::exists("./results/deepcwind/decay")) {
+				std::cout << "Path " << std::filesystem::absolute("./results/deepcwind/decay") 
 					<< " does not exist, creating it now..." << std::endl;
 				std::filesystem::create_directory("./results");
 				std::filesystem::create_directory("./results/deepcwind");
-				std::filesystem::create_directory("./results/deepcwind/reg_waves");
-				profilingFile.open("./results/deepcwind/reg_waves/duration_ms.txt");
+				std::filesystem::create_directory("./results/deepcwind/decay");
+				profilingFile.open("./results/deepcwind/decay/duration_ms.txt");
 				if (!profilingFile.is_open()) {
 					std::cout << "Still cannot open file, ending program" << std::endl;
 					return 0;
@@ -206,15 +208,15 @@ int main(int argc, char* argv[]) {
 
 	if (saveDataOn) {
 		std::ofstream outputFile;
-		outputFile.open("./results/deepcwind/reg_waves/deepcwind_reg_waves.txt");
+		outputFile.open("./results/deepcwind/decay/deepcwind_decay.txt");
 		if (!outputFile.is_open()) {
-			if (!std::filesystem::exists("./results/deepcwind/reg_waves")) {
-				std::cout << "Path " << std::filesystem::absolute("./results/deepcwind/reg_waves") 
+			if (!std::filesystem::exists("./results/deepcwind/decay")) {
+				std::cout << "Path " << std::filesystem::absolute("./results/deepcwind/decay") 
 					<< " does not exist, creating it now..." << std::endl;
 				std::filesystem::create_directory("./results");
 				std::filesystem::create_directory("./results/deepcwind");
-				std::filesystem::create_directory("./results/deepcwind/reg_waves");
-				outputFile.open("./results/deepcwind/reg_waves/deepcwind_decay.txt");
+				std::filesystem::create_directory("./results/deepcwind/decay");
+				outputFile.open("./results/deepcwind/decay/deepcwind_decay.txt");
 				if (!outputFile.is_open()) {
 					std::cout << "Still cannot open file, ending program" << std::endl;
 					return 0;
