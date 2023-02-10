@@ -144,58 +144,16 @@ int main(int argc, char* argv[]) {
 	// ---------------- Begin specific DT set up, comment out unused tests ----------------------------
 	// ---------------- DT1 set up (surge decay, flaps locked, no waves) ------------------------------
 	// set up pos/rotations
-	//base->SetPos(ChVector<>(5.0, 0.0, -9.0));
-	//flapFore->SetPos( ChVector<>(5.0 + -12.5, 0.0, -9.0 + 3.5) );
-	//flapAft->SetPos( ChVector<>(5.0 + 12.5, 0.0, -9.0 + 3.5) );
-	//// set up revolute joints and lock them
-	//auto revoluteFore = chrono_types::make_shared<ChLinkLockRevolute>();
-	//auto revoluteAft = chrono_types::make_shared<ChLinkLockRevolute>();
-	//ChQuaternion<> revoluteRot = Q_from_AngX(CH_C_PI / 2.0); // do not change
-	//revoluteFore->Initialize(base, flapFore, ChCoordsys<>(ChVector<>(5.0 - 12.5, 0.0, -9.0), revoluteRot));
-	//system.AddLink(revoluteFore);
-	//revoluteAft->Initialize(base, flapAft, ChCoordsys<>(ChVector<>(5.0 + 12.5, 0.0, -9.0), revoluteRot));
-	//system.AddLink(revoluteAft);
-	//revoluteFore->Lock(true);
-	//revoluteAft->Lock(true);
-	//// create ground
-	//auto ground = chrono_types::make_shared<ChBody>();
-	//system.AddBody(ground);
-	//ground->SetPos(ChVector<>(0, 0, -9.0));
-	//ground->SetIdentifier(-1);
-	//ground->SetBodyFixed(true);
-	//ground->SetCollide(false);
-	//// add prismatic joint between the base and ground
-	//auto prismatic = chrono_types::make_shared<ChLinkLockPrismatic>();
-	//prismatic->Initialize(ground, base, ChCoordsys<>(ChVector<>(0.0, 0.0, -9.0), Q_from_AngY(CH_C_PI_2)));
-	//system.AddLink(prismatic);
-	//// add damping to prismatic joint
-	//auto prismatic_pto = chrono_types::make_shared<ChLinkTSDA>();
-	//prismatic_pto->Initialize(ground, base, true, ChVector<>(0.0, 0.0, 0.0), ChVector<>(0.0, 0.0, 0.0));
-	//prismatic_pto->SetSpringCoefficient(1e5);
-	//prismatic_pto->SetRestLength(0.0);
-	//system.AddLink(prismatic_pto);
-	// ---------------- DT2 set up (flaps locked, base pitch decay, no waves) ---------------------------------
-	//adjust initial pitch here only, rotations and positions calcuated from this:
-	double ang_rad = CH_C_PI / 18.0;
-	// set up pos/rotations
-	base->SetPos(ChVector<>(0.0, 0.0, -9.0));
-	base->SetRot(Q_from_AngAxis(ang_rad, VECT_Y));
-	flapFore->SetRot(Q_from_AngAxis(ang_rad, VECT_Y));
-	flapAft->SetRot(Q_from_AngAxis(ang_rad, VECT_Y));
-	flapFore->SetPos( ChVector<>(-12.5*std::cos(ang_rad)+3.5*std::sin(ang_rad), 0.0,
-		-9.0 + 12.5*std::sin(ang_rad) + 3.5 * std::cos(ang_rad)) );
-	flapAft->SetPos(ChVector<>(12.5 * std::cos(ang_rad) + 3.5*std::sin(ang_rad) , 0.0,
-		-9.0 -12.5 * std::sin(ang_rad) + 3.5 * std::cos(ang_rad)) );
-
+	base->SetPos(ChVector<>(5.0, 0.0, -9.0));
+	flapFore->SetPos( ChVector<>(5.0 + -12.5, 0.0, -9.0 + 3.5) );
+	flapAft->SetPos( ChVector<>(5.0 + 12.5, 0.0, -9.0 + 3.5) );
 	// set up revolute joints and lock them
 	auto revoluteFore = chrono_types::make_shared<ChLinkLockRevolute>();
 	auto revoluteAft = chrono_types::make_shared<ChLinkLockRevolute>();
 	ChQuaternion<> revoluteRot = Q_from_AngX(CH_C_PI / 2.0); // do not change
-	revoluteFore->Initialize(base, flapFore, ChCoordsys<>(ChVector<>(-12.5*std::cos(ang_rad), 0.0, 
-		-9.0 + 12.5* std::sin(ang_rad) ), revoluteRot) );
+	revoluteFore->Initialize(base, flapFore, ChCoordsys<>(ChVector<>(5.0 - 12.5, 0.0, -9.0), revoluteRot));
 	system.AddLink(revoluteFore);
-	revoluteAft->Initialize(base, flapAft, ChCoordsys<>(ChVector<>(12.5*std::cos(ang_rad), 0.0,
-		-9.0-12.5*std::sin(ang_rad) ), revoluteRot) );
+	revoluteAft->Initialize(base, flapAft, ChCoordsys<>(ChVector<>(5.0 + 12.5, 0.0, -9.0), revoluteRot));
 	system.AddLink(revoluteAft);
 	revoluteFore->Lock(true);
 	revoluteAft->Lock(true);
@@ -206,10 +164,54 @@ int main(int argc, char* argv[]) {
 	ground->SetIdentifier(-1);
 	ground->SetBodyFixed(true);
 	ground->SetCollide(false);
-	// add revolute joint between the base and ground
-	auto base_rev = chrono_types::make_shared<ChLinkLockRevolute>();
-	base_rev->Initialize(base, ground, ChCoordsys<>(ChVector<>(0.0,0.0,-9.0), revoluteRot));
-	system.AddLink(base_rev);
+	// add prismatic joint between the base and ground
+	auto prismatic = chrono_types::make_shared<ChLinkLockPrismatic>();
+	prismatic->Initialize(ground, base, ChCoordsys<>(ChVector<>(0.0, 0.0, -9.0), Q_from_AngY(CH_C_PI_2)));
+	system.AddLink(prismatic);
+	// add damping to prismatic joint
+	auto prismatic_pto = chrono_types::make_shared<ChLinkTSDA>();
+	prismatic_pto->Initialize(ground, base, true, ChVector<>(0.0, 0.0, 0.0), ChVector<>(0.0, 0.0, 0.0));
+	prismatic_pto->SetSpringCoefficient(1e5);
+	prismatic_pto->SetRestLength(0.0);
+	system.AddLink(prismatic_pto);
+	std::string ofname = "CHRONO_F3OF_DT1_SURGE.txt";
+	// ---------------- DT2 set up (flaps locked, base pitch decay, no waves) ---------------------------------
+	////adjust initial pitch here only, rotations and positions calcuated from this:
+	//double ang_rad = CH_C_PI / 18.0;
+	//// set up pos/rotations
+	//base->SetPos(ChVector<>(0.0, 0.0, -9.0));
+	//base->SetRot(Q_from_AngAxis(ang_rad, VECT_Y));
+	//flapFore->SetRot(Q_from_AngAxis(ang_rad, VECT_Y));
+	//flapAft->SetRot(Q_from_AngAxis(ang_rad, VECT_Y));
+	//flapFore->SetPos( ChVector<>(-12.5*std::cos(ang_rad)+3.5*std::sin(ang_rad), 0.0,
+	//	-9.0 + 12.5*std::sin(ang_rad) + 3.5 * std::cos(ang_rad)) );
+	//flapAft->SetPos(ChVector<>(12.5 * std::cos(ang_rad) + 3.5*std::sin(ang_rad) , 0.0,
+	//	-9.0 -12.5 * std::sin(ang_rad) + 3.5 * std::cos(ang_rad)) );
+
+	//// set up revolute joints and lock them
+	//auto revoluteFore = chrono_types::make_shared<ChLinkLockRevolute>();
+	//auto revoluteAft = chrono_types::make_shared<ChLinkLockRevolute>();
+	//ChQuaternion<> revoluteRot = Q_from_AngX(CH_C_PI / 2.0); // do not change
+	//revoluteFore->Initialize(base, flapFore, ChCoordsys<>(ChVector<>(-12.5*std::cos(ang_rad), 0.0, 
+	//	-9.0 + 12.5* std::sin(ang_rad) ), revoluteRot) );
+	//system.AddLink(revoluteFore);
+	//revoluteAft->Initialize(base, flapAft, ChCoordsys<>(ChVector<>(12.5*std::cos(ang_rad), 0.0,
+	//	-9.0-12.5*std::sin(ang_rad) ), revoluteRot) );
+	//system.AddLink(revoluteAft);
+	//revoluteFore->Lock(true);
+	//revoluteAft->Lock(true);
+	//// create ground
+	//auto ground = chrono_types::make_shared<ChBody>();
+	//system.AddBody(ground);
+	//ground->SetPos(ChVector<>(0, 0, -9.0));
+	//ground->SetIdentifier(-1);
+	//ground->SetBodyFixed(true);
+	//ground->SetCollide(false);
+	//// add revolute joint between the base and ground
+	//auto base_rev = chrono_types::make_shared<ChLinkLockRevolute>();
+	//base_rev->Initialize(base, ground, ChCoordsys<>(ChVector<>(0.0,0.0,-9.0), revoluteRot));
+	//system.AddLink(base_rev);
+	//std::string ofname = "CHRONO_F3OF_DT2_PITCH.txt";
 
 	// ---------------- DT3 set up (flap decay, base fixed, no waves) ---------------------------------
 	//base->SetPos(ChVector<>(0.0, 0.0, -9.0));
@@ -243,6 +245,8 @@ int main(int argc, char* argv[]) {
 	//anchor->Initialize(base, ground, false, base->GetVisualModelFrame(), base->GetVisualModelFrame());
 	//system.Add(anchor);
 	//anchor->SetConstrainedCoords(true, true, true, true, true, true);  // x, y, z, Rx, Ry, Rz
+	//std::string ofname = "CHRONO_F3OF_DT3_PITCH.txt";
+
 	
 	// ---------------- End DT specific set up, now add hydro forces ----------------------------------
 
@@ -320,14 +324,14 @@ int main(int argc, char* argv[]) {
 
 	if (saveDataOn) {
 		std::ofstream outputFile;
-		outputFile.open("./results/f3of/decay/f3of_decay.txt");
+		outputFile.open("./results/f3of/decay/" + ofname);
 		if (!outputFile.is_open()) {
 			if (!std::filesystem::exists("./results/f3of/decay")) {
 				std::cout << "Path " << std::filesystem::absolute("./results/f3of/decay") << " does not exist, creating it now..." << std::endl;
 				std::filesystem::create_directory("./results");
 				std::filesystem::create_directory("./results/f3of");
 				std::filesystem::create_directory("./results/f3of/decay");
-				outputFile.open("./results/f3of/decay/f3of_decay.txt");
+				outputFile.open("./results/f3of/decay/" + ofname);
 				if (!outputFile.is_open()) {
 					std::cout << "Still cannot open file, ending program" << std::endl;
 					return 0;

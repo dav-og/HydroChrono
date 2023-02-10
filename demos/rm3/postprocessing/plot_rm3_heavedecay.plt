@@ -1,11 +1,10 @@
 set terminal pdf size 5in,4.5in
-set output "rm3.pdf"
+set output "rm3_decay.pdf"
 
 set samples 100000
 set grid
-
 # set lmargin at screen 0.125
-set multiplot layout 2,1
+set multiplot layout 2,1 title "RM3 Heave Decay Test"
 set ylabel "Float Heave"
 set xrange [0:40]
 plot "rm3_decay.txt" using 1:2 with lines title "Chrono", \
