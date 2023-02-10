@@ -74,14 +74,14 @@ int main(int argc, char* argv[]) {
 	system.SetSolverMaxIterations(300);  // the higher, the easier to keep the constraints satisfied.
 	system.SetStep(timestep);
 	ChRealtimeStepTimer realtime_timer;
-	double simulationDuration = 40.0;
+	double simulationDuration = 1000.0;
 
 	// some io/viz options
 	bool visualizationOn = true;
 	bool profilingOn = true;
 	bool saveDataOn = true;
 	std::vector<double> time_vector;
-	std::vector<double> body_heave_pos;
+	std::vector<double> body_pitch;
 	std::vector<double> float_drift_position;
 	std::vector<double> plate_heave_position;
 
@@ -102,8 +102,10 @@ int main(int argc, char* argv[]) {
 	// define the body's initial conditions
 	system.Add(body);
 	body->SetNameString("body1");
-	body->SetPos(ChVector<>(0.0, 0.0, 0.0));
-	double ang_rad = -3.391 * CH_C_PI / 180.0;
+	auto cg = ChVector<>(0.0, 0.0, -7.53);
+	auto offset = ChVector<>(0.0, 0.0, 0.0);
+	body->SetPos(cg + offset);
+	double ang_rad = -3.95 * CH_C_PI / 180.0;
 	body->SetRot(Q_from_AngAxis(ang_rad, VECT_Y));
 	body->SetMass(1.419625e7);
 	body->SetInertiaXX(ChVector<>(1.2898e10, 1.2851e10, 1.4189e10)); 
@@ -157,7 +159,7 @@ int main(int argc, char* argv[]) {
 				system.DoStepDynamics(timestep);
 				// append data to std vector
 				time_vector.push_back(system.GetChTime());
-				body_heave_pos.push_back(body->GetPos().z());
+				body_pitch.push_back(body->GetRot().Q_to_Euler123().y());
 				//float_drift_position.push_back(body->GetPos().x());
 				//plate_heave_position.push_back(plate_body2->GetPos().z());
 				// force playback to be real-time
@@ -170,7 +172,7 @@ int main(int argc, char* argv[]) {
 		while (system.GetChTime() <= simulationDuration) {
 			// append data to std vector
 			time_vector.push_back(system.GetChTime());
-			body_heave_pos.push_back(body->GetPos().z());
+			body_pitch.push_back(body->GetPos().z());
 			//float_drift_position.push_back(body->GetPos().x());
 			//plate_heave_position.push_back(plate_body2->GetPos().z());
 
@@ -231,7 +233,7 @@ int main(int argc, char* argv[]) {
 		for (int i = 0; i < time_vector.size(); ++i)
 			outputFile << std::left << std::setw(10) << std::setprecision(2) << std::fixed 
 			<< time_vector[i] << std::right << std::setw(16) << std::setprecision(4) 
-			<< std::fixed << body_heave_pos[i]
+			<< std::fixed << body_pitch[i]
 			//<< std::right << std::setw(16) << std::setprecision(4) << std::fixed << plate_heave_position[i]
 			//<< std::right << std::setw(16) << std::setprecision(4) << std::fixed << float_drift_position[i]
 			<< std::endl;

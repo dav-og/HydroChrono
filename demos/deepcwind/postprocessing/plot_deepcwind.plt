@@ -6,7 +6,7 @@ set grid
 set lmargin at screen 0.125
 set multiplot title "DeepCwind" # layout 2,1
 set xlabel "Time (s)"
-set xrange [0 : 40]
+set xrange [0 : 1000]
 
 # f(x) = c 
 # fit f(x) 'deepcwind_LC44.txt' using 1:2 every ::1 via c 
@@ -29,5 +29,5 @@ fit f(x) 'deepcwind_LC46.txt' using 1:2 every ::1 via c
 set format y "%g°" 
 set title "Pitch Decay (LC 4.6)"
 plot "NREL_LC_46.txt" every ::1 using 1:6 with lines linewidth 2.5 title "Compare", \
-     "deepcwind_LC46.txt" every ::1 using 1:2 with lines title "Chrono", \
+     "deepcwind_LC46.txt" every ::1 using 1:($2 * 180 / 3.1415) with lines title "Chrono", \
      f(x) with lines linewidth 0.7 title "equilibrium"
