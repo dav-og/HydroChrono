@@ -6,6 +6,7 @@
 #include <iomanip> // std::setprecision
 #include <chrono> // std::chrono::high_resolution_clock::now
 #include <vector> // std::vector<double>
+#include "chrono/physics/ChLinkRSDA.h"
 
 // Use the namespaces of Chrono
 using namespace chrono;
@@ -109,8 +110,19 @@ int main(int argc, char* argv[]) {
 	body->SetRot(Q_from_AngAxis(ang_rad, VECT_Y));
 	body->SetMass(1.419625e7);
 	body->SetInertiaXX(ChVector<>(1.2898e10, 1.2851e10, 1.4189e10)); 
-	//body->SetCollide(false);
 
+	auto ground = chrono_types::make_shared<ChBody>();
+	system.AddBody(ground);
+	ground->SetPos(cg);
+	ground->SetIdentifier(-1);
+	ground->SetBodyFixed(true);
+	ground->SetCollide(false);
+
+	auto rot_damp = chrono_types::make_shared<ChLinkRSDA>();
+	rot_damp->SetDampingCoefficient(31);
+	rot_damp->SetRestAngle(0);
+	rot_damp->Initialize(body, ground, ChCoordsys(cg) );
+	system.AddLink(rot_damp);
 	// define wave parameters 
 	HydroInputs my_hydro_inputs;
 	my_hydro_inputs.mode = noWaveCIC;
