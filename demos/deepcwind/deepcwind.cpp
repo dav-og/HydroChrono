@@ -68,7 +68,7 @@ int main(int argc, char* argv[]) {
 
 	// system/solver settings
 	ChSystemNSC system;
-	system.Set_G_acc(ChVector<>(0.0, 0.0, -9.8124));
+	system.Set_G_acc(ChVector<>(0.0, 0.0, -9.81));
 	double timestep = 0.08;
 	system.SetTimestepperType(ChTimestepper::Type::HHT);
 	system.SetSolverType(ChSolver::Type::GMRES);
@@ -118,11 +118,21 @@ int main(int argc, char* argv[]) {
 	ground->SetBodyFixed(true);
 	ground->SetCollide(false);
 
+	// define damping in pitch
 	auto rot_damp = chrono_types::make_shared<ChLinkRSDA>();
-	rot_damp->SetDampingCoefficient(31);
-	rot_damp->SetRestAngle(0);
-	rot_damp->Initialize(body, ground, ChCoordsys(cg) );
+	// need to set damping to 31 MN-m/(rad/s)
+	rot_damp->SetDampingCoefficient(31e6);
+	//rot_damp->SetRestAngle(0); // adding or removing this doesn't seem to change output
+	// puts Z axis for link into screen
+	ChQuaternion<> rev_rot = Q_from_AngAxis(CH_C_PI / 2.0, VECT_X); 
+	rot_damp->Initialize(body, ground, ChCoordsys(cg, rev_rot) );
 	system.AddLink(rot_damp);
+
+	// adding revolute joint breaks demo
+	//auto rev = chrono_types::make_shared<ChLinkLockRevolute>();
+	//rev->Initialize(body, ground, ChCoordsys<>(cg, rev_rot));
+	//system.AddLink(rev);
+
 	// define wave parameters 
 	HydroInputs my_hydro_inputs;
 	my_hydro_inputs.mode = noWaveCIC;
@@ -153,7 +163,7 @@ int main(int argc, char* argv[]) {
 		irrlichtVis->AddLogo();
 		irrlichtVis->AddSkyBox();
 		// camera position and where it points
-		irrlichtVis->AddCamera(ChVector<>(20, -60, -10), ChVector<>(0, 0, -10)); 
+		irrlichtVis->AddCamera(ChVector<>(0, -70, -10), ChVector<>(0, 0, -10)); 
 		irrlichtVis->AddTypicalLights();
 
 		// add play/pause button
@@ -166,6 +176,8 @@ int main(int argc, char* argv[]) {
 			irrlichtVis->BeginScene();
 			irrlichtVis->Render();
 			irrlichtVis->EndScene();
+			irrlichtVis->EnableBodyFrameDrawing(50);
+			irrlichtVis->EnableLinkFrameDrawing(50);
 			if (buttonPressed) {
 				// step the simulation forwards
 				system.DoStepDynamics(timestep);
