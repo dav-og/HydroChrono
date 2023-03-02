@@ -114,6 +114,7 @@ int main(int argc, char* argv[]) {
 	auto ground = chrono_types::make_shared<ChBody>();
 	system.AddBody(ground);
 	ground->SetPos(cg);
+	ground->SetRot(Q_from_AngAxis(CH_C_PI / 2.0, VECT_X));
 	ground->SetIdentifier(-1);
 	ground->SetBodyFixed(true);
 	ground->SetCollide(false);
@@ -122,16 +123,10 @@ int main(int argc, char* argv[]) {
 	auto rot_damp = chrono_types::make_shared<ChLinkRSDA>();
 	// need to set damping to 31 MN-m/(rad/s)
 	rot_damp->SetDampingCoefficient(31e6);
-	//rot_damp->SetRestAngle(0); // adding or removing this doesn't seem to change output
-	// puts Z axis for link into screen
+	// puts Z axis for link into screen, keeping x axis the same (to the right)
 	ChQuaternion<> rev_rot = Q_from_AngAxis(CH_C_PI / 2.0, VECT_X); 
-	rot_damp->Initialize(body, ground, ChCoordsys(cg, rev_rot) );
+	rot_damp->Initialize(body, ground, false, ChCoordsys(cg, rev_rot), ChCoordsys(cg, rev_rot));
 	system.AddLink(rot_damp);
-
-	// adding revolute joint breaks demo
-	//auto rev = chrono_types::make_shared<ChLinkLockRevolute>();
-	//rev->Initialize(body, ground, ChCoordsys<>(cg, rev_rot));
-	//system.AddLink(rev);
 
 	// define wave parameters 
 	HydroInputs my_hydro_inputs;
