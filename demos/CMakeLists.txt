@@ -166,6 +166,37 @@ target_link_libraries(demo_rm3_reg_waves
     HydroChrono
 )
 
+# =====================
+# RM3_MOORDYN
+# =====================
+add_executable(rm3_moordyn)
+
+target_sources(
+    rm3_moordyn
+
+    PRIVATE
+    rm3/rm3_moordyn.cpp
+)
+
+if(HYDROCHRONO_ENABLE_IRRLICHT)
+	target_compile_definitions(rm3_moordyn
+		PRIVATE 
+		HYDROCHRONO_HAVE_IRRLICHT=1
+	)
+endif()
+
+target_include_directories(
+	rm3_moordyn
+
+	PRIVATE
+	    ${CMAKE_CURRENT_SOURCE_DIR}/
+	    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(rm3_moordyn
+    PRIVATE 
+    HydroChrono
+)
 
 # =====================
 # OSWEC_DECAY
