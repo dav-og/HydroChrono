@@ -169,32 +169,33 @@ target_link_libraries(demo_rm3_reg_waves
 # =====================
 # RM3_MOORDYN
 # =====================
-add_executable(rm3_moordyn)
+add_executable(demo_rm3_moordyn)
 
 target_sources(
-    rm3_moordyn
+    demo_rm3_moordyn
 
     PRIVATE
-    rm3/rm3_moordyn.cpp
+    rm3/demo_rm3_moordyn.cpp
 )
 
 if(HYDROCHRONO_ENABLE_IRRLICHT)
-	target_compile_definitions(rm3_moordyn
-		PRIVATE 
+	target_compile_definitions(demo_rm3_moordyn
+		PRIVATE
 		HYDROCHRONO_HAVE_IRRLICHT=1
 	)
 endif()
 
 target_include_directories(
-	rm3_moordyn
+	demo_rm3_moordyn
 
 	PRIVATE
 	    ${CMAKE_CURRENT_SOURCE_DIR}/
 	    ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-target_link_libraries(rm3_moordyn
-    PRIVATE 
+target_link_libraries(demo_rm3_moordyn
+    PRIVATE
+	HydroChronoGUI
     HydroChrono
 )
 

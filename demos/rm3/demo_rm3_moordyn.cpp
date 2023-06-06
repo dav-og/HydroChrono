@@ -74,16 +74,35 @@ int main(int argc, char* argv[]) {
     GetLog() << "Chrono version: " << CHRONO_VERSION << "\n\n";
 
     // Load the DLL
-    HMODULE hMod = LoadLibrary(TEXT("C:\\code\\MoorDyn-2\\compile\\DLL\\MoorDyn_Win64.dll"));
+    HMODULE hMod = LoadLibrary(TEXT("C:\\code\\moorDyn\\libmoordyn.dll"));
+    std::cout << hMod;
     if (hMod == NULL) {
         std::cerr << "Unable to load DLL!\n";
         return 1;
     }
 
+    MoorDynInit_type MoorDynInit = (MoorDynInit_type)GetProcAddress(hMod, "MoorDynInit");
+
+    // Load the function
+    FARPROC tmp = GetProcAddress(hMod, "MoorDynInit");
+    if (tmp == NULL) {
+        DWORD error = GetLastError();
+        std::cout << "Error loading function: " << error << std::endl;
+    } else {
+        MoorDynInit = (MoorDynInit_type)tmp;
+    }
+
     // Get function pointers
-    MoorDynInit_type MoorDynInit   = (MoorDynInit_type)GetProcAddress(hMod, "MoorDynInit");
+    //MoorDynInit_type MoorDynInit   = (MoorDynInit_type)GetProcAddress(hMod, "MoorDynInit");
     MoorDynStep_type MoorDynStep   = (MoorDynStep_type)GetProcAddress(hMod, "MoorDynStep");
     MoorDynClose_type MoorDynClose = (MoorDynClose_type)GetProcAddress(hMod, "MoorDynClose");
+
+    std::cout << MoorDynInit;
+    //if (MoorDynInit == NULL) {
+    //    // If GetProcAddress failed, print an error message and terminate the program
+    //    std::cerr << "Failed to load MoorDynInit from DLL: " << GetLastError() << std::endl;
+    //    return 1;  // or use an exception, or any other method to stop the program
+    //}
 
     //// Error handling if any of the functions is not found
     //if (MoorDynInit == NULL || MoorDynStep == NULL || MoorDynClose == NULL) {
@@ -167,18 +186,20 @@ int main(int argc, char* argv[]) {
     prismatic_pto->SetDampingCoefficient(0.0);
     system.AddLink(prismatic_pto);
 
-    // define wave parameters (not used in this demo)
-    HydroInputs my_hydro_inputs;
-    my_hydro_inputs.mode = WaveMode::noWaveCIC;  // or 'regular' or 'regularCIC' or 'irregular';
-    // my_hydro_inputs.regular_wave_amplitude = 0.022;
-    // my_hydro_inputs.regular_wave_omega = 2.10;
+    auto default_dont_add_waves = std::make_shared<NoWave>(2);
 
     // attach hydrodynamic forces to body
     std::vector<std::shared_ptr<ChBody>> bodies;
     bodies.push_back(float_body1);
     bodies.push_back(plate_body2);
-    TestHydro blah(bodies, h5fname, my_hydro_inputs);
+    TestHydro blah(bodies, h5fname, default_dont_add_waves);
 
+    double x[]  = {plate_body2->GetPos().x(), plate_body2->GetPos().y(), plate_body2->GetPos().z()};
+    double xd[] = {plate_body2->GetPos_dt().x(), plate_body2->GetPos_dt().y(), plate_body2->GetPos_dt().z()};
+
+    const char* moorDynInputFile = "C:\\code\\HydroChrono\\demos\\rm3\\mooring\\lines.txt";
+    //int initRes = MoorDynInit(x, xd, moorDynInputFile);
+    //std::cout << initRes;
     //// Debug printing added mass matrix and system mass matrix
     // ChSparseMatrix M;
     // system.GetMassMatrix(&M);
