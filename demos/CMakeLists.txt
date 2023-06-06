@@ -331,3 +331,35 @@ target_link_libraries(demo_DeepCWind_decay
     HydroChronoGUI
     HydroChrono
 )
+
+# =====================
+# TALOS
+# =====================
+add_executable(demo_talos)
+
+target_sources(
+    demo_talos
+
+    PRIVATE
+    talos/demo_talos.cpp
+)
+
+if(HYDROCHRONO_ENABLE_IRRLICHT)
+	target_compile_definitions(demo_talos
+		PRIVATE
+		HYDROCHRONO_HAVE_IRRLICHT=1
+	)
+endif()
+
+target_include_directories(
+	demo_talos
+
+	PRIVATE
+	    ${CMAKE_CURRENT_SOURCE_DIR}/
+	    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(demo_talos
+    PRIVATE
+    HydroChrono
+)
