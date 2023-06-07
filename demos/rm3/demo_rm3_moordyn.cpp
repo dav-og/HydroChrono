@@ -74,7 +74,8 @@ int main(int argc, char* argv[]) {
     GetLog() << "Chrono version: " << CHRONO_VERSION << "\n\n";
 
     // Load the DLL
-    HMODULE hMod = LoadLibrary(TEXT("C:\\code\\moorDyn\\libmoordyn.dll"));
+    //HMODULE hMod = LoadLibrary(TEXT("C:\\code\\moorDyn\\libmoordyn.dll"));
+    HMODULE hMod = LoadLibrary(TEXT("C:\\work\\moordyn\\MoorDyn_v2_build\\MoorDyn_v2_build\\source\\libmoordyn.dll"));
     std::cout << hMod;
     if (hMod == NULL) {
         std::cerr << "Unable to load DLL!\n";
@@ -198,7 +199,7 @@ int main(int argc, char* argv[]) {
     double xd[] = {plate_body2->GetPos_dt().x(), plate_body2->GetPos_dt().y(), plate_body2->GetPos_dt().z()};
 
     const char* moorDynInputFile = "C:\\code\\HydroChrono\\demos\\rm3\\mooring\\lines.txt";
-    //int initRes = MoorDynInit(x, xd, moorDynInputFile);
+    int initRes = MoorDynInit(x, xd, moorDynInputFile);
     //std::cout << initRes;
     //// Debug printing added mass matrix and system mass matrix
     // ChSparseMatrix M;
