@@ -24,11 +24,6 @@ using namespace chrono::irrlicht;
 using namespace chrono;
 using namespace chrono::geometry;
 
-// Define function pointers
-typedef int (*MoorDynInit_type)(double x[], double xd[], const char* infilename);
-typedef int (*MoorDynStep_type)(double x[], double xd[], double f[], double*, double*);
-typedef int (*MoorDynClose_type)(void);
-
 #ifdef HYDROCHRONO_HAVE_IRRLICHT
 class MyActionReceiver : public IEventReceiver {
   public:
@@ -72,43 +67,6 @@ class MyActionReceiver : public IEventReceiver {
 
 int main(int argc, char* argv[]) {
     GetLog() << "Chrono version: " << CHRONO_VERSION << "\n\n";
-
-    // Load the DLL
-    HMODULE hMod = LoadLibrary(TEXT("C:\\code\\moorDyn\\libmoordyn.dll"));
-    std::cout << hMod;
-    if (hMod == NULL) {
-        std::cerr << "Unable to load DLL!\n";
-        return 1;
-    }
-
-    MoorDynInit_type MoorDynInit = (MoorDynInit_type)GetProcAddress(hMod, "MoorDynInit");
-
-    // Load the function
-    FARPROC tmp = GetProcAddress(hMod, "MoorDynInit");
-    if (tmp == NULL) {
-        DWORD error = GetLastError();
-        std::cout << "Error loading function: " << error << std::endl;
-    } else {
-        MoorDynInit = (MoorDynInit_type)tmp;
-    }
-
-    // Get function pointers
-    //MoorDynInit_type MoorDynInit   = (MoorDynInit_type)GetProcAddress(hMod, "MoorDynInit");
-    MoorDynStep_type MoorDynStep   = (MoorDynStep_type)GetProcAddress(hMod, "MoorDynStep");
-    MoorDynClose_type MoorDynClose = (MoorDynClose_type)GetProcAddress(hMod, "MoorDynClose");
-
-    std::cout << MoorDynInit;
-    //if (MoorDynInit == NULL) {
-    //    // If GetProcAddress failed, print an error message and terminate the program
-    //    std::cerr << "Failed to load MoorDynInit from DLL: " << GetLastError() << std::endl;
-    //    return 1;  // or use an exception, or any other method to stop the program
-    //}
-
-    //// Error handling if any of the functions is not found
-    //if (MoorDynInit == NULL || MoorDynStep == NULL || MoorDynClose == NULL) {
-    //    std::cerr << "Unable to load function!\n";
-    //    return 1;
-    //}
 
     if (hydroc::setInitialEnvironment(argc, argv) != 0) {
         return 1;
@@ -192,14 +150,9 @@ int main(int argc, char* argv[]) {
     std::vector<std::shared_ptr<ChBody>> bodies;
     bodies.push_back(float_body1);
     bodies.push_back(plate_body2);
-    TestHydro blah(bodies, h5fname, default_dont_add_waves);
+    TestHydro hf(bodies, h5fname, default_dont_add_waves);
+    hf.AddMoorings(".//mooring//lines.txt", ".//moordyn2.dll", "body1");
 
-    double x[]  = {plate_body2->GetPos().x(), plate_body2->GetPos().y(), plate_body2->GetPos().z()};
-    double xd[] = {plate_body2->GetPos_dt().x(), plate_body2->GetPos_dt().y(), plate_body2->GetPos_dt().z()};
-
-    const char* moorDynInputFile = "C:\\code\\HydroChrono\\demos\\rm3\\mooring\\lines.txt";
-    //int initRes = MoorDynInit(x, xd, moorDynInputFile);
-    //std::cout << initRes;
     //// Debug printing added mass matrix and system mass matrix
     // ChSparseMatrix M;
     // system.GetMassMatrix(&M);
@@ -214,7 +167,7 @@ int main(int argc, char* argv[]) {
         auto irrlichtVis = chrono_types::make_shared<ChVisualSystemIrrlicht>();
         irrlichtVis->AttachSystem(&system);
         irrlichtVis->SetWindowSize(1280, 720);
-        irrlichtVis->SetWindowTitle("RM3 - Decay Test");
+        irrlichtVis->SetWindowTitle("RM3 - Moordyn Test");
         irrlichtVis->SetCameraVertical(CameraVerticalDir::Z);
         irrlichtVis->Initialize();
         irrlichtVis->AddLogo();
@@ -237,20 +190,6 @@ int main(int argc, char* argv[]) {
                 // std::cout << M << std::endl;
                 // step the simulation forwards
                 system.DoStepDynamics(timestep);
-                
-                // Get position and velocity from the plate_body2
-                double x[3], xd[3];
-                ChVector<> position = plate_body2->GetPos();
-                x[0]                = position.x();
-                x[1]                = position.y();
-                x[2]                = position.z();
-                ChVector<> velocity = plate_body2->GetPos_dt();
-                xd[0]               = velocity.x();
-                xd[1]               = velocity.y();
-                xd[2]               = velocity.z();
-
-                // The force array that will receive forces from MoorDyn
-                double f[3];
 
                 // append data to std vector
                 time_vector.push_back(system.GetChTime());

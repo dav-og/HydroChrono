@@ -72,7 +72,7 @@ std::vector<double> Linspace(double start, double end, int num_points) {
     return result;
 }
 
-//std::vector<double> PiersonMoskowitzSpectrumHz(std::vector<double>& f, double Hs, double Tp) {
+// std::vector<double> PiersonMoskowitzSpectrumHz(std::vector<double>& f, double Hs, double Tp) {
 //    // Sort the frequency vector
 //    std::sort(f.begin(), f.end());
 //
@@ -88,7 +88,7 @@ std::vector<double> Linspace(double start, double end, int num_points) {
 //    return spectral_densities;
 //}
 
-//std::vector<double> FreeSurfaceElevation(const std::vector<double>& freqs_hz,
+// std::vector<double> FreeSurfaceElevation(const std::vector<double>& freqs_hz,
 //                                         const std::vector<double>& spectral_densities,
 //                                         const std::vector<double>& time_index,
 //                                         int seed = 1) {
@@ -117,7 +117,8 @@ std::vector<double> Linspace(double start, double end, int num_points) {
 //    }
 //
 //    std::mt19937 rng(seed);  // Creates an instance of the std::mt19937 random number generator; a Mersenne Twister
-//                             // random number engine. The seed parameter is used to initialize the generator's internal
+//                             // random number engine. The seed parameter is used to initialize the generator's
+//                             internal
 //                             // state - to control the random sequence produced.
 //    std::uniform_real_distribution<double> dist(0.0, 2 * M_PI);
 //    std::vector<double> phases(omegas.size());
@@ -135,7 +136,6 @@ std::vector<double> Linspace(double start, double end, int num_points) {
 //    return eta;
 //}
 
-
 // =============================================================================
 // HydroInputs Class Definitions
 // =============================================================================
@@ -143,18 +143,18 @@ std::vector<double> Linspace(double start, double end, int num_points) {
 /*******************************************************************************
  * HydroInputs constructor
  *******************************************************************************/
-//HydroInputs::HydroInputs() {}
+// HydroInputs::HydroInputs() {}
 
 // TODO cut this, why is this a whole function
-//void HydroInputs::UpdateNumTimesteps() {
+// void HydroInputs::UpdateNumTimesteps() {
 //    num_timesteps = static_cast<int>(simulation_duration / simulation_dt) + 1;
 //}
 
-//void HydroInputs::UpdateRampTimesteps() {
+// void HydroInputs::UpdateRampTimesteps() {
 //    ramp_timesteps = static_cast<int>(ramp_duration / simulation_dt) + 1;
 //}
 //
-//void HydroInputs::CreateSpectrum() {
+// void HydroInputs::CreateSpectrum() {
 //    // Define the frequency vector
 //    spectrum_frequencies = Linspace(0.001, 1.0, 1000);  // TODO make this range accessible to user.
 //
@@ -177,7 +177,6 @@ std::vector<double> Linspace(double start, double end, int num_points) {
 //        std::cerr << "Unable to open file for writing." << std::endl;
 //    }
 //}
-
 
 // =============================================================================
 // ComponentFunc Class Definitions
@@ -385,6 +384,7 @@ TestHydro::TestHydro(std::vector<std::shared_ptr<ChBody>> user_bodies,
     force_hydrostatic.resize(total_dofs, 0.0);
     force_radiation_damping.resize(total_dofs, 0.0);
     total_force.resize(total_dofs, 0.0);
+    force_mooring.resize(total_dofs, 0.0);
     // set up equilibrium for entire system (each body has position and rotation equilibria 3 indicies apart)
     equilibrium.resize(total_dofs, 0.0);
     cb_minus_cg.resize(3 * num_bodies, 0.0);  // cb-cg has 3 components for each body
@@ -434,6 +434,101 @@ void TestHydro::AddWaves(std::shared_ptr<WaveBase> waves) {
         irreg->AddH5Data(file_info.GetIrregularWaveInfos(), file_info.GetSimulationInfo());
     }
     user_waves->Initialize();
+}
+
+void TestHydro::AddMoorings(std::string lines, std::string dll_loc, std::string bod_name) {
+    // set up for moordyn here
+    // info for TestHydro initialized here
+    moordyn_on = true;
+    int temp_b = stoi(bod_name.erase(0, 4)) - 1;
+    // moored_bodies has list of all bodies (0 indexed) that have a mooring attached to them with corresponding
+    // lines.txt file name
+    moored_body_lines.emplace_back(temp_b, lines);
+
+    // some of this probably needs to be saved as member variables in TestHydro TODO
+
+    // Define function pointers
+    typedef int (*MoorDynInit_type)(double x[], double xd[], const char* infilename);
+    typedef int (*MoorDynStep_type)(double x[], double xd[], double f[], double*, double*);
+    typedef int (*MoorDynClose_type)(void);
+
+    // Load the DLL
+    // HMODULE hMod = LoadLibrary(TEXT("C:\\code\\moorDyn\\libmoordyn.dll"));
+    HMODULE hMod = LoadLibrary(TEXT("C:\\Users\\ZQUINTON\\code\\MoorDyn\\MoorDyn_v2_build\\source\\libmoordyn.dll"));
+    std::cout << hMod;
+    if (hMod == NULL) {
+        std::cerr << "Unable to load DLL!\n";
+        return;
+    }
+
+    MoorDynInit_type MoorDynInit = (MoorDynInit_type)GetProcAddress(hMod, "MoorDynInit");
+
+    // Load the function
+    FARPROC tmp = GetProcAddress(hMod, "MoorDynInit");
+    if (tmp == NULL) {
+        DWORD error = GetLastError();
+        std::cout << "Error loading function: " << error << std::endl;
+    } else {
+        MoorDynInit = (MoorDynInit_type)tmp;
+    }
+
+    // Get function pointers
+    // MoorDynInit_type MoorDynInit   = (MoorDynInit_type)GetProcAddress(hMod, "MoorDynInit");
+    MoorDynStep_type MoorDynStep   = (MoorDynStep_type)GetProcAddress(hMod, "MoorDynStep");
+    MoorDynClose_type MoorDynClose = (MoorDynClose_type)GetProcAddress(hMod, "MoorDynClose");
+
+    std::cout << MoorDynInit;
+    // if (MoorDynInit == NULL) {
+    //    // If GetProcAddress failed, print an error message and terminate the program
+    //    std::cerr << "Failed to load MoorDynInit from DLL: " << GetLastError() << std::endl;
+    //    return 1;  // or use an exception, or any other method to stop the program
+    //}
+
+    //// Error handling if any of the functions is not found
+    // if (MoorDynInit == NULL || MoorDynStep == NULL || MoorDynClose == NULL) {
+    //    std::cerr << "Unable to load function!\n";
+    //    return 1;
+    //}
+    std::shared_ptr<chrono::ChBody> current_bod = bodies[std::get<0>(moored_body_lines.back())];
+    double x[]  = {current_bod->GetPos().x(), current_bod->GetPos().y(), current_bod->GetPos().z()};
+    double xd[] = {current_bod->GetPos_dt().x(), current_bod->GetPos_dt().y(), current_bod->GetPos_dt().z()};
+
+    const char* moorDynInputFile = lines.c_str();
+    int initRes                  = MoorDynInit(x, xd, moorDynInputFile);
+    std::cout << initRes;
+}
+
+Eigen::VectorXd TestHydro::ComputeForceMooring() {
+    if (!moordyn_on) {
+        return force_mooring; // should be all 0s from coordinateFunc
+    }
+    // now calc mooring force if moordyn_on
+    // call step function for each body we've got moorings attached to
+    for (auto& bod_num_line : moored_body_lines) {
+        int i = bod_num_line.first;
+        double x[3], xd[3];
+        ChVector<> position = bodies[i]->GetPos();
+        x[0]                = position.x();
+        x[1]                = position.y();
+        x[2]                = position.z();
+        ChVector<> velocity = bodies[i]->GetPos_dt();
+        xd[0]               = velocity.x();
+        xd[1]               = velocity.y();
+        xd[2]               = velocity.z();
+        // The force array that will receive forces from MoorDyn
+        double f[3];
+        // call moorstep here TODO
+        // 
+        // if you need the lines.txt file for this operation body use:
+        // const char* lines = bod_num_line.second.c_str();
+
+        // now f is initialized and can be added to the total force with an offset for each body
+        for (int dof = 0; dof < 3; dof++) {
+            int index            = i * 6 + dof;
+            force_mooring[index] = f[dof];
+        }
+    }
+    return force_mooring;
 }
 
 // void TestHydro::WaveSetUp() {
@@ -689,8 +784,6 @@ double TestHydro::GetRIRFval(int row, int col, int st) {
 //    return force_waves;
 //}
 
-
-
 // make force function call look the same as other compute force functions:
 Eigen::VectorXd TestHydro::ComputeForceWaves() {
     Eigen::VectorXd wf(num_bodies * 6);
@@ -733,21 +826,23 @@ double TestHydro::coordinateFunc(int b, int i) {
     std::fill(force_hydrostatic.begin(), force_hydrostatic.end(), 0.0);
     std::fill(force_radiation_damping.begin(), force_radiation_damping.end(), 0.0);
     std::fill(force_waves.begin(), force_waves.end(), 0.0);
+    std::fill(force_mooring.begin(), force_mooring.end(), 0.0);
 
     // call compute forces
     convTrapz = true;  // use trapeziodal rule or assume fixed dt.
 
     force_hydrostatic       = ComputeForceHydrostatics();
-    force_radiation_damping = ComputeForceRadiationDampingConv(); // TODO non convolution option
+    force_radiation_damping = ComputeForceRadiationDampingConv();  // TODO non convolution option
     force_waves             = ComputeForceWaves();
+    force_mooring           = ComputeForceMooring();
 
     // TODO once all force components are Eigen, remove this from being a loop
     for (int i = 0; i < total_dofs; i++) {
         total_force[i] = force_hydrostatic[i] - force_radiation_damping[i] + force_waves[i];
     }
 
-    //std::cout << "force_waves\n";
-    //for (int i = 0; i < total_dofs; i++) {
+    // std::cout << "force_waves\n";
+    // for (int i = 0; i < total_dofs; i++) {
     //    std::cout << force_waves[i] << std::endl;
     //}
 
