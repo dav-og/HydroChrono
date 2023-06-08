@@ -68,6 +68,7 @@ class MyActionReceiver : public IEventReceiver {
 int main(int argc, char* argv[]) {
     GetLog() << "Chrono version: " << CHRONO_VERSION << "\n\n";
 
+
     if (hydroc::setInitialEnvironment(argc, argv) != 0) {
         return 1;
     }
@@ -152,6 +153,7 @@ int main(int argc, char* argv[]) {
     bodies.push_back(plate_body2);
     TestHydro hf(bodies, h5fname, default_dont_add_waves);
     hf.AddMoorings(".//mooring//lines.txt", ".//moordyn2.dll", "body1");
+
 
     //// Debug printing added mass matrix and system mass matrix
     // ChSparseMatrix M;
