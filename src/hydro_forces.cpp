@@ -384,7 +384,7 @@ TestHydro::TestHydro(std::vector<std::shared_ptr<ChBody>> user_bodies,
     force_hydrostatic.resize(total_dofs, 0.0);
     force_radiation_damping.resize(total_dofs, 0.0);
     total_force.resize(total_dofs, 0.0);
-    force_mooring.resize(total_dofs, 0.0);
+    force_mooring.resize(total_dofs);
     // set up equilibrium for entire system (each body has position and rotation equilibria 3 indicies apart)
     equilibrium.resize(total_dofs, 0.0);
     cb_minus_cg.resize(3 * num_bodies, 0.0);  // cb-cg has 3 components for each body
