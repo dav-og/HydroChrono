@@ -333,33 +333,65 @@ target_link_libraries(demo_DeepCWind_decay
 )
 
 # =====================
-# TALOS
+# TALOS_LOCKED
 # =====================
-add_executable(demo_talos)
+add_executable(demo_talos_locked)
 
 target_sources(
-    demo_talos
+    demo_talos_locked
 
     PRIVATE
-    talos/demo_talos.cpp
+    talos/demo_talos_locked.cpp
 )
 
 if(HYDROCHRONO_ENABLE_IRRLICHT)
-	target_compile_definitions(demo_talos
+	target_compile_definitions(demo_talos_locked
 		PRIVATE
 		HYDROCHRONO_HAVE_IRRLICHT=1
 	)
 endif()
 
 target_include_directories(
-	demo_talos
+	demo_talos_locked
 
 	PRIVATE
 	    ${CMAKE_CURRENT_SOURCE_DIR}/
 	    ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-target_link_libraries(demo_talos
+target_link_libraries(demo_talos_locked
+    PRIVATE
+    HydroChrono
+)
+
+# =====================
+# TALOS_UNLOCKED
+# =====================
+add_executable(demo_talos_unlocked)
+
+target_sources(
+    demo_talos_unlocked
+
+    PRIVATE
+    talos/demo_talos_unlocked.cpp
+)
+
+if(HYDROCHRONO_ENABLE_IRRLICHT)
+	target_compile_definitions(demo_talos_unlocked
+		PRIVATE
+		HYDROCHRONO_HAVE_IRRLICHT=1
+	)
+endif()
+
+target_include_directories(
+	demo_talos_unlocked
+
+	PRIVATE
+	    ${CMAKE_CURRENT_SOURCE_DIR}/
+	    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(demo_talos_unlocked
     PRIVATE
     HydroChrono
 )
