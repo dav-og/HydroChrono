@@ -126,7 +126,8 @@ void WriteFreeSurfaceMeshObj(const std::vector<std::array<double, 3>>& points,
                              const std::string& file_name);
 std::vector<std::array<size_t, 3>> CreateFreeSurfaceTriangles(size_t eta_size);
 std::vector<std::array<double, 3>> CreateFreeSurface3DPts(const Eigen::VectorXd& eta, const Eigen::VectorXd& t_vec);
-    // =============================================================================
+
+// =============================================================================
 // class HydroInputs {
 //  public:
 //    WaveMode mode;

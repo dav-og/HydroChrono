@@ -120,12 +120,12 @@ int main(int argc, char* argv[]) {
     hull->SetNameString("body1");
 
     // define the hull's initial conditions
-    auto cg = ChVector<>(0.0, 0.0, 0.0);
+    auto cg = ChVector<>(0.0, 0.0, -7.96);
     // offset used for heave/surge decay test
-    auto offset = ChVector<>(0.0, 0.0, 3.0);
+    auto offset = ChVector<>(0.0, 0.0, 0.0);
     hull->SetPos(cg + offset);
     // Use for pitch decay test
-    double ang_rad = 0.0; //-3.95 * CH_C_PI / 180.0;
+    double ang_rad = 0.174533;  //-3.95 * CH_C_PI / 180.0;
     hull->SetRot(Q_from_AngAxis(ang_rad, VECT_Y));
     hull->SetMass(3747762);
     hull->SetInertiaXX(ChVector<>(2.376e8, 2.376e8, 2.376e8));
@@ -324,7 +324,7 @@ int main(int argc, char* argv[]) {
                 std::filesystem::create_directory("./results");
                 std::filesystem::create_directory("./results/talos");
                 std::filesystem::create_directory("./results/talos/decay");
-                output_file.open("./results/talos/decay/talos_decay.txt");
+                output_file.open("./results/talos/decay/talos_pitch_decay.txt");
                 if (!output_file.is_open()) {
                     std::cout << "Still cannot open file, ending program" << std::endl;
                     return 0;
