@@ -68,6 +68,47 @@ class MyActionReceiver : public IEventReceiver {
 int main(int argc, char* argv[]) {
     GetLog() << "Chrono version: " << CHRONO_VERSION << "\n\n";
 
+<<<<<<< Updated upstream
+=======
+    // Load the DLL
+    //HMODULE hMod = LoadLibrary(TEXT("C:\\code\\moorDyn\\libmoordyn.dll"));
+    //HMODULE hMod = LoadLibrary(TEXT("C:\\work\\moordyn\\MoorDyn_v2_build\\MoorDyn_v2_build\\source\\libmoordyn.dll"));
+    HMODULE hMod = LoadLibrary(TEXT("C:\\work\\moordyn\\MoorDyn-2\\MoorDyn-2_build\\source\\Release\\moordyn.dll"));
+    std::cout << hMod;
+    if (hMod == NULL) {
+        std::cerr << "Unable to load DLL!\n";
+        return 1;
+    }
+
+    MoorDynInit_type MoorDynInit = (MoorDynInit_type)GetProcAddress(hMod, "MoorDynInit");
+
+    // Load the function
+    FARPROC tmp = GetProcAddress(hMod, "MoorDynInit");
+    if (tmp == NULL) {
+        DWORD error = GetLastError();
+        std::cout << "Error loading function: " << error << std::endl;
+    } else {
+        MoorDynInit = (MoorDynInit_type)tmp;
+    }
+
+    // Get function pointers
+    //MoorDynInit_type MoorDynInit   = (MoorDynInit_type)GetProcAddress(hMod, "MoorDynInit");
+    MoorDynStep_type MoorDynStep   = (MoorDynStep_type)GetProcAddress(hMod, "MoorDynStep");
+    MoorDynClose_type MoorDynClose = (MoorDynClose_type)GetProcAddress(hMod, "MoorDynClose");
+
+    std::cout << MoorDynInit;
+    //if (MoorDynInit == NULL) {
+    //    // If GetProcAddress failed, print an error message and terminate the program
+    //    std::cerr << "Failed to load MoorDynInit from DLL: " << GetLastError() << std::endl;
+    //    return 1;  // or use an exception, or any other method to stop the program
+    //}
+
+    //// Error handling if any of the functions is not found
+    //if (MoorDynInit == NULL || MoorDynStep == NULL || MoorDynClose == NULL) {
+    //    std::cerr << "Unable to load function!\n";
+    //    return 1;
+    //}
+>>>>>>> Stashed changes
 
     if (hydroc::setInitialEnvironment(argc, argv) != 0) {
         return 1;
@@ -89,7 +130,7 @@ int main(int argc, char* argv[]) {
     system.SetSolverMaxIterations(300);  // the higher, the easier to keep the constraints satisfied.
     system.SetStep(timestep);
     ChRealtimeStepTimer realtime_timer;
-    double simulationDuration = 300.0;
+    double simulationDuration = 2.0;
 
     // some io/viz options
     bool visualizationOn = true;
@@ -192,6 +233,32 @@ int main(int argc, char* argv[]) {
                 // std::cout << M << std::endl;
                 // step the simulation forwards
                 system.DoStepDynamics(timestep);
+
+                // Time and timestep for MoorDyn
+                double t  = system.GetChTime();
+                double dt = timestep;
+
+                // Calling MoorDynStep
+                //int status = MoorDynStep(x, xd, f, &t, &dt);
+
+                //for (int i = 0; i < 3; i++) {
+                //    std::cout << f[i] << std::endl;
+                //}
+
+                //// Convert the raw force data into a Chrono::ChVector:
+                //chrono::ChVector<> force_vector(f[0], f[1], f[2]);
+
+                //// Create force and add it to the body
+                //auto moorDynForce = std::make_shared<chrono::ChForce>();
+
+                //// Set direction
+                //moorDynForce->SetDir(force_vector.GetNormalized());
+
+                //// Set magnitude
+                //moorDynForce->SetMforce(force_vector.Length());
+
+                // Attach force to body
+                //plate_body2->AddForce(moorDynForce);
 
                 // append data to std vector
                 time_vector.push_back(system.GetChTime());

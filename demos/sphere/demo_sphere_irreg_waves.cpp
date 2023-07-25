@@ -121,6 +121,9 @@ int main(int argc, char* argv[]) {
     // TestHydro hydro_forces(bodies, h5fname, my_hydro_inputs);
     TestHydro hydro_forces(bodies, h5fname);
     hydro_forces.AddWaves(my_hydro_inputs);
+    hydro_forces.AddMoorings(".//mooring1//lines.txt", ".//moordyn2.dll", "body1");
+    hydro_forces.AddMoorings(".//mooring2//lines.txt", ".//moordyn2.dll", "body2");
+
 
     // set up free surface from a mesh
     auto fse_plane = chrono_types::make_shared<ChBody>();
