@@ -195,6 +195,32 @@ int main(int argc, char* argv[]) {
                 // step the simulation forwards
                 system.DoStepDynamics(timestep);
 
+                // Time and timestep for MoorDyn
+                double t  = system.GetChTime();
+                double dt = timestep;
+
+                // Calling MoorDynStep
+                //int status = MoorDynStep(x, xd, f, &t, &dt);
+
+                //for (int i = 0; i < 3; i++) {
+                //    std::cout << f[i] << std::endl;
+                //}
+
+                //// Convert the raw force data into a Chrono::ChVector:
+                //chrono::ChVector<> force_vector(f[0], f[1], f[2]);
+
+                //// Create force and add it to the body
+                //auto moorDynForce = std::make_shared<chrono::ChForce>();
+
+                //// Set direction
+                //moorDynForce->SetDir(force_vector.GetNormalized());
+
+                //// Set magnitude
+                //moorDynForce->SetMforce(force_vector.Length());
+
+                // Attach force to body
+                //plate_body2->AddForce(moorDynForce);
+
                 // append data to std vector
                 time_vector.push_back(system.GetChTime());
                 float_heave_position.push_back(float_body1->GetPos().z());

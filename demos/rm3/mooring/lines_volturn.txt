@@ -1,0 +1,27 @@
+--------------------- MoorDyn Input File ------------------------------------
+Mooring system for VolturnUS 6MW 100% FEED                                                                                  
+----------------------- LINE TYPES ------------------------------------------                                                                                   
+Name        Diam     MassDen         EA      BA/-zeta    EI      Cd    Ca     CdAx    CaAx
+(-)         (m)      (kg/m)         (N)     (N-s/-)     (N-m^2)  (-)   (-)     (-)      (-)         
+Spring      0.155    19.3409        500E6    70000       0.0      0     0       0        0
+---------------------------- POINT LIST ---------------------------------------------------------------                                           
+PointID  Type/BodyID   X        Y        Z       M        V          CdA   Ca
+(-)       (-)         (m)      (m)      (m)     (kg)     (m^3)      (m^2)  (-)
+1        Fixed      -145.72     0     -5.387     0        0           0    0    
+2        Vessel      -45.72     0     -5.387         0    0    0    0                                    
+----------------------------- LINE LIST --------------------------      
+ID      LineType   AttachA   AttachB  UnstrLen  NumSegs   Outputs
+(-)       (-)       (-)       (-)         (m)      (-)      (-)   
+1    Spring       1      2           100.0      25      t
+---------------------- SOLVER OPTIONS ---------------------------------------                                           
+0.001    dtM       - time step to use in mooring integration (s)
+1000000    kb      - bottom stiffness (Pa/m)
+300000    cb      - bottom damping (Pa-s/m)
+0.01      dtIC      - time interval for analyzing convergence during IC gen (s)
+100     TmaxIC    - max time for ic gen (s)
+40      CdScaleIC - factor by which to scale drag coefficients during dynamic relaxation (-)
+0.000001     threshIC  - threshold for IC convergence (-)                                          
+------------------------ OUTPUTS --------------------------------------------                                           
+FairTen1
+END                                         
+------------------------- need this line --------------------------------------                                                                                     
