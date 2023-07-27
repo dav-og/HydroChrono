@@ -20,6 +20,8 @@
 #include <hydroc/h5fileinfo.h>
 #include <hydroc/wave_types.h>
 
+#include "C:\\code\\MoorDyn_hc\\MoorDyn\\source\\MoorDyn2.h"
+
 using namespace chrono;
 using namespace chrono::fea;
 
@@ -90,6 +92,33 @@ class ForceFunc6d {
 
 class ChLoadAddedMass;
 
+class MoorDynDLLHandler {
+  public:
+    // Constructor and destructor
+    MoorDynDLLHandler();
+    ~MoorDynDLLHandler();
+
+    // Other public methods
+    void LoadMoorDyn(std::string dll_path);
+    MoorDyn CreateMoorDyn(const char* infilename);
+    int DofsMoorDyn(MoorDyn system, unsigned int* n);
+    int InitMoorDyn(MoorDyn system, const double* x, const double* xd);
+    int StepMoorDyn(MoorDyn system, const double* x, const double* xd, double* f, double* t, double* dt);
+    void CloseMoorDyn();
+
+    MoorDyn GetMoorDynSystem() { return moordyn_system; }
+    void SetMoorDynSystem(MoorDyn system) { moordyn_system = system; }
+
+  private:
+    HMODULE hMod;
+    MoorDyn (*MoorDynCreate)(const char* infilename);
+    int (*MoorDynDofs)(MoorDyn system, unsigned int* n);
+    int (*MoorDynInit)(MoorDyn system, const double* x, const double* xd);
+    int (*MoorDynStep)(MoorDyn system, const double* x, const double* xd, double* f, double* t, double* dt);
+    int (*MoorDynClose)(MoorDyn system);
+    MoorDyn moordyn_system;
+};
+
 class TestHydro {
   public:
     bool printed = false;
@@ -103,6 +132,7 @@ class TestHydro {
     TestHydro operator=(const TestHydro& rhs) = delete;
     void AddWaves(std::shared_ptr<WaveBase> waves);
     void WaveSetUp();
+
     /**
      * @brief Adds Mooring lines to single body.
      * 
@@ -112,12 +142,15 @@ class TestHydro {
      * @param dll_loc string location of moordyn dll
      * @param bod_name string name of body to attach moorings to, must match body name from h5 file
      */
-    void AddMoorings(std::string lines, std::string dll_loc, std::string bod_name);
+    //void AddMoorings(std::string lines, std::string dll_loc, std::string bod_name);
+    void AddMoorDyn(std::string moorDynInputPath,
+                    std::string moorDynDllPath,
+                    std::vector<std::string> bodyNames);
     /**
      * @brief Computes the mooring force for all bodies with moorings attached.
      * @return 6N dimensional mooring force
     */
-    Eigen::VectorXd ComputeForceMooring();
+    Eigen::VectorXd ComputeForceMoorDyn();
     std::vector<double> ComputeForceHydrostatics();
     std::vector<double> ComputeForceRadiationDampingConv();
     Eigen::VectorXd ComputeForceWaves();
@@ -135,6 +168,8 @@ class TestHydro {
     bool convTrapz;
     Eigen::VectorXd t_irf;
 
+    void EndSimulation();
+
   private:
     std::vector<std::shared_ptr<ChBody>> bodies;
     int num_bodies;
@@ -143,7 +178,7 @@ class TestHydro {
     /**
      * @brief list of pairs of the 0 indexed body to attach moorings to from line.txt file given by string.
     */
-    std::vector<std::pair<int,std::string>> moored_body_lines;
+    std::vector<std::pair<int, std::string>> moordyn_input;
     HydroData file_info;
     std::vector<ForceFunc6d> force_per_body;
     double sumVelHistoryAndRIRF;
@@ -170,4 +205,5 @@ class TestHydro {
     int offset_rirf;
     std::shared_ptr<ChLoadContainer> my_loadcontainer;
     std::shared_ptr<ChLoadAddedMass> my_loadbodyinertia;
+    std::vector<std::unique_ptr<MoorDynDLLHandler>> dllHandlers;
 };

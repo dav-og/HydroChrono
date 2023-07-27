@@ -89,7 +89,7 @@ int main(int argc, char* argv[]) {
     system.SetSolverMaxIterations(300);  // the higher, the easier to keep the constraints satisfied.
     system.SetStep(timestep);
     ChRealtimeStepTimer realtime_timer;
-    double simulationDuration = 300.0;
+    double simulationDuration = 0.03;
 
     // some io/viz options
     bool visualizationOn = true;
@@ -152,7 +152,9 @@ int main(int argc, char* argv[]) {
     bodies.push_back(float_body1);
     bodies.push_back(plate_body2);
     TestHydro hf(bodies, h5fname, default_dont_add_waves);
-    hf.AddMoorings(".//mooring//lines.txt", ".//moordyn2.dll", "body1");
+    std::string moorDynDllPath = "C:\\code\\MoorDyn_hc\\MoorDyn_build\\source\\Release\\moordyn.dll";
+    std::string moorDynInputPath = "C:\\code\\HydroChrono\\demos\\rm3\\mooring\\lines.txt";
+    hf.AddMoorDyn(moorDynInputPath, moorDynDllPath, {"body2", "body2", "body2"});  //" C :\\code\\MoorDyn - 2\\compile\\DLL\\MoorDyn_Win64.dll ", " body2 ");
 
 
     //// Debug printing added mass matrix and system mass matrix
@@ -228,6 +230,7 @@ int main(int argc, char* argv[]) {
 
             frame++;
         }
+        //hf.EndSimulation();
 #ifdef HYDROCHRONO_HAVE_IRRLICHT
     }
 #endif

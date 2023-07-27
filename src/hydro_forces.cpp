@@ -7,6 +7,8 @@
 #include <unsupported/Eigen/Splines>
 
 #include <algorithm>
+
+#include "C:/code/MoorDyn-2/source/MoorDyn2.h"
 #include <cmath>
 #include <memory>
 #include <numeric>  // std::accumulate
@@ -384,7 +386,7 @@ TestHydro::TestHydro(std::vector<std::shared_ptr<ChBody>> user_bodies,
     force_hydrostatic.resize(total_dofs, 0.0);
     force_radiation_damping.resize(total_dofs, 0.0);
     total_force.resize(total_dofs, 0.0);
-    force_mooring.resize(total_dofs);
+    //force_mooring.resize(total_dofs, 0.0);
     // set up equilibrium for entire system (each body has position and rotation equilibria 3 indicies apart)
     equilibrium.resize(total_dofs, 0.0);
     cb_minus_cg.resize(3 * num_bodies, 0.0);  // cb-cg has 3 components for each body
@@ -424,6 +426,21 @@ TestHydro::TestHydro(std::vector<std::shared_ptr<ChBody>> user_bodies,
     AddWaves(user_waves);
 }
 
+
+//void TestHydro::AddMoorings(const std::string& moorDynInputPath,
+//                            const std::string& moorDynDllPath,
+//                            const std::string& bodyName) {
+//    for (auto& dllHandler : dllHandlers) {
+//        dllHandler->LoadMoorDyn(moorDynDllPath, moorDynInputPath, bodyName);
+//    }
+//}
+
+void TestHydro::EndSimulation() {
+    for (auto& dllHandler : dllHandlers) {
+        dllHandler->CloseMoorDyn();
+    }
+}
+
 void TestHydro::AddWaves(std::shared_ptr<WaveBase> waves) {
     user_waves = waves;
     if (user_waves->GetWaveMode() == WaveMode::regular) {
@@ -436,100 +453,119 @@ void TestHydro::AddWaves(std::shared_ptr<WaveBase> waves) {
     user_waves->Initialize();
 }
 
-void TestHydro::AddMoorings(std::string lines, std::string dll_loc, std::string bod_name) {
-    // set up for moordyn here
-    // info for TestHydro initialized here
+void TestHydro::AddMoorDyn(std::string moorDynInputPath,
+                           std::string moorDynDllPath,
+                           std::vector<std::string> bodyNames) {
     moordyn_on = true;
-    int temp_b = stoi(bod_name.erase(0, 4)) - 1;
-    // moored_bodies has list of all bodies (0 indexed) that have a mooring attached to them with corresponding
-    // lines.txt file name
-    moored_body_lines.emplace_back(temp_b, lines);
 
-    // some of this probably needs to be saved as member variables in TestHydro TODO
+    for (const auto& bodyName : bodyNames) {
+        std::string bodyNameCopy = bodyName;
+        int temp_b               = stoi(bodyNameCopy.erase(0, 4)) - 1;
+        moordyn_input.emplace_back(temp_b, moorDynInputPath);
 
-    // Define function pointers
-    typedef int (*MoorDynInit_type)(double x[], double xd[], const char* infilename);
-    typedef int (*MoorDynStep_type)(double x[], double xd[], double f[], double*, double*);
-    typedef int (*MoorDynClose_type)(void);
+        auto dllHandler = std::make_unique<MoorDynDLLHandler>();
+        dllHandler->LoadMoorDyn(moorDynDllPath);
 
-    // Load the DLL
-    // HMODULE hMod = LoadLibrary(TEXT("C:\\code\\moorDyn\\libmoordyn.dll"));
-    HMODULE hMod = LoadLibrary(TEXT("C:\\Users\\ZQUINTON\\code\\MoorDyn\\MoorDyn_v2_build\\source\\libmoordyn.dll"));
-    std::cout << hMod;
-    if (hMod == NULL) {
-        std::cerr << "Unable to load DLL!\n";
-        return;
+        // Create the MoorDyn system using the input file
+        MoorDyn moordyn_system = dllHandler->CreateMoorDyn(moorDynInputPath.c_str());
+        if (moordyn_system == NULL) {
+            std::cerr << "Failed to create MoorDyn system for " << bodyName << std::endl;
+            continue;
+        }
+
+        // Set the MoorDyn system in the DLLHandler
+        dllHandler->SetMoorDynSystem(moordyn_system);
+
+        dllHandlers.push_back(std::move(dllHandler));
+
+        std::cout << "Number of MoorDyn systems: " << dllHandlers.size() << std::endl;
+
+        std::shared_ptr<chrono::ChBody> current_bod = bodies[temp_b];
+        double x[]  = {current_bod->GetPos().x(), current_bod->GetPos().y(), current_bod->GetPos().z()};
+        double xd[] = {current_bod->GetPos_dt().x(), current_bod->GetPos_dt().y(), current_bod->GetPos_dt().z()};
+
+        // Print the x variable
+        std::cout << "x array: [" << x[0] << ", " << x[1] << ", " << x[2] << "]" << std::endl;
+
+        // Print the xd variable
+        std::cout << "xd array: [" << xd[0] << ", " << xd[1] << ", " << xd[2] << "]" << std::endl;
+
+        int initResult = dllHandlers.back()->InitMoorDyn(moordyn_system, x, xd);
+
+        unsigned int dofs_test = 0;
+
+        int numDOF = dllHandlers.back()->DofsMoorDyn(moordyn_system, &dofs_test);
+
+        std::cout << "dofs_test: " << dofs_test << std::endl;
+
+        if (initResult != 0) {
+            std::cerr << "Failed to initialize MoorDyn system for " << bodyName << std::endl;
+            continue;
+        }
     }
-
-    MoorDynInit_type MoorDynInit = (MoorDynInit_type)GetProcAddress(hMod, "MoorDynInit");
-
-    // Load the function
-    FARPROC tmp = GetProcAddress(hMod, "MoorDynInit");
-    if (tmp == NULL) {
-        DWORD error = GetLastError();
-        std::cout << "Error loading function: " << error << std::endl;
-    } else {
-        MoorDynInit = (MoorDynInit_type)tmp;
-    }
-
-    // Get function pointers
-    // MoorDynInit_type MoorDynInit   = (MoorDynInit_type)GetProcAddress(hMod, "MoorDynInit");
-    MoorDynStep_type MoorDynStep   = (MoorDynStep_type)GetProcAddress(hMod, "MoorDynStep");
-    MoorDynClose_type MoorDynClose = (MoorDynClose_type)GetProcAddress(hMod, "MoorDynClose");
-
-    std::cout << MoorDynInit;
-    // if (MoorDynInit == NULL) {
-    //    // If GetProcAddress failed, print an error message and terminate the program
-    //    std::cerr << "Failed to load MoorDynInit from DLL: " << GetLastError() << std::endl;
-    //    return 1;  // or use an exception, or any other method to stop the program
-    //}
-
-    //// Error handling if any of the functions is not found
-    // if (MoorDynInit == NULL || MoorDynStep == NULL || MoorDynClose == NULL) {
-    //    std::cerr << "Unable to load function!\n";
-    //    return 1;
-    //}
-    std::shared_ptr<chrono::ChBody> current_bod = bodies[std::get<0>(moored_body_lines.back())];
-    double x[]  = {current_bod->GetPos().x(), current_bod->GetPos().y(), current_bod->GetPos().z()};
-    double xd[] = {current_bod->GetPos_dt().x(), current_bod->GetPos_dt().y(), current_bod->GetPos_dt().z()};
-
-    const char* moorDynInputFile = lines.c_str();
-    int initRes                  = MoorDynInit(x, xd, moorDynInputFile);
-    std::cout << initRes;
 }
 
-Eigen::VectorXd TestHydro::ComputeForceMooring() {
+
+Eigen::VectorXd TestHydro::ComputeForceMoorDyn() {
+    std::cout << "Starting ComputeForceMoorDyn()" << std::endl;
     if (!moordyn_on) {
-        return force_mooring; // should be all 0s from coordinateFunc
+        std::cout << "Moordyn is off" << std::endl;
+        return force_mooring;  // should be all 0s from coordinateFunc
     }
-    // now calc mooring force if moordyn_on
-    // call step function for each body we've got moorings attached to
-    for (auto& bod_num_line : moored_body_lines) {
-        int i = bod_num_line.first;
+
+    double dt = 0.01;
+
+    // Initialize a new force vector with all zeros
+    Eigen::VectorXd force_mooring_new = Eigen::VectorXd::Zero(force_mooring.size());
+
+    for (size_t i = 0; i < moordyn_input.size(); ++i) {
         double x[3], xd[3];
-        ChVector<> position = bodies[i]->GetPos();
+        ChVector<> position = bodies[moordyn_input[i].first]->GetPos();
         x[0]                = position.x();
         x[1]                = position.y();
         x[2]                = position.z();
-        ChVector<> velocity = bodies[i]->GetPos_dt();
+
+        ChVector<> velocity = bodies[moordyn_input[i].first]->GetPos_dt();
         xd[0]               = velocity.x();
         xd[1]               = velocity.y();
         xd[2]               = velocity.z();
-        // The force array that will receive forces from MoorDyn
-        double f[3];
-        // call moorstep here TODO
-        // 
-        // if you need the lines.txt file for this operation body use:
-        // const char* lines = bod_num_line.second.c_str();
 
-        // now f is initialized and can be added to the total force with an offset for each body
-        for (int dof = 0; dof < 3; dof++) {
-            int index            = i * 6 + dof;
-            force_mooring[index] = f[dof];
+        double f[3] = {};  // all elements are 0.0
+
+        std::cout << "Preparing to call StepMoorDyn()" << std::endl;
+
+        int result = dllHandlers[i]->StepMoorDyn(dllHandlers[i]->GetMoorDynSystem(), x, xd, f, &prev_time, &dt);
+        if (result != 0) {
+            std::cerr << "Failed to step MoorDyn system" << std::endl;
+            continue;
         }
+
+        std::cout << "StepMoorDyn() completed" << std::endl;
+
+        for (int dof = 0; dof < 3; dof++) {
+            int index = moordyn_input[i].first * 6 + dof;
+            if (index >= force_mooring_new.size()) {
+                std::cout << "Index out of range: " << index << std::endl;
+            } else {
+                // Add the force contribution of the current body to the global force vector
+                force_mooring_new[index] += f[dof];
+            }
+        }
+
+        std::cout << "Finished filling force_mooring for " << moordyn_input[i].first << std::endl;
     }
+
+    std::cout << "force_mooring: " << force_mooring_new << std::endl;
+    std::cout << "End of ComputeForceMoorDyn, force_mooring size: " << force_mooring_new.size() << std::endl;
+
+    // Replace the old force vector with the new one
+    force_mooring = force_mooring_new;
+
     return force_mooring;
 }
+
+
+
 
 // void TestHydro::WaveSetUp() {
 //    int total_dofs = 6 * num_bodies;
@@ -822,32 +858,150 @@ double TestHydro::coordinateFunc(int b, int i) {
 
     // reset forces to 0
     // TODO change forces to Eigen::VectorXd types, might need to force evaluation of eigen at some point?
+    std::cout << "setting hydrodynamic forces to zero..." << std::endl;
+
     std::fill(total_force.begin(), total_force.end(), 0.0);
     std::fill(force_hydrostatic.begin(), force_hydrostatic.end(), 0.0);
     std::fill(force_radiation_damping.begin(), force_radiation_damping.end(), 0.0);
     std::fill(force_waves.begin(), force_waves.end(), 0.0);
-    std::fill(force_mooring.begin(), force_mooring.end(), 0.0);
+    force_mooring = Eigen::VectorXd(total_dofs);
+    force_mooring.setZero();
+
+    //std::fill(force_mooring.begin(), force_mooring.end(), 0.0);
 
     // call compute forces
     convTrapz = true;  // use trapeziodal rule or assume fixed dt.
 
     force_hydrostatic       = ComputeForceHydrostatics();
     force_radiation_damping = ComputeForceRadiationDampingConv();  // TODO non convolution option
-    force_waves             = ComputeForceWaves();
-    force_mooring           = ComputeForceMooring();
+    //force_waves             = ComputeForceWaves();
+    ComputeForceMoorDyn();
+
+    std::cout << "testing some stuff here..." << std::endl;
 
     // TODO once all force components are Eigen, remove this from being a loop
     for (int i = 0; i < total_dofs; i++) {
-        total_force[i] = force_hydrostatic[i] - force_radiation_damping[i] + force_waves[i];
+        std::cout << "Index: " << i << std::endl;
+        std::cout << "force_hydrostatic[i]: " << force_hydrostatic[i] << std::endl;
+        std::cout << "force_radiation_damping[i]: " << force_radiation_damping[i] << std::endl;
+        std::cout << "force_mooring[i]: " << force_mooring[i] << std::endl;
+        total_force[i] = force_hydrostatic[i] - force_radiation_damping[i];//+force_mooring[i];  //+ force_waves[i]
+        std::cout << "total_force[i]: " << total_force[i] << std::endl;
     }
-
-    // std::cout << "force_waves\n";
-    // for (int i = 0; i < total_dofs; i++) {
-    //    std::cout << force_waves[i] << std::endl;
-    //}
 
     if (body_num_offset + i < 0 || body_num_offset >= total_dofs) {
         std::cout << "total force accessing out of bounds" << std::endl;
     }
     return total_force[body_num_offset + i];
+}
+
+MoorDynDLLHandler::MoorDynDLLHandler()
+    : hMod(NULL), MoorDynCreate(NULL), MoorDynInit(NULL), MoorDynStep(NULL), MoorDynClose(NULL), moordyn_system(NULL) {}
+
+MoorDynDLLHandler::~MoorDynDLLHandler() {
+    if (hMod != NULL) {
+        FreeLibrary(hMod);
+    }
+}
+
+void MoorDynDLLHandler::LoadMoorDyn(std::string dll_path) {
+    hMod = LoadLibraryA(dll_path.c_str());
+    if (hMod == NULL) {
+        std::cerr << "Unable to load DLL!\n";
+        return;
+    }
+
+    MoorDynCreate = (MoorDyn(*)(const char*))GetProcAddress(hMod, "MoorDyn_Create");
+    if (MoorDynCreate == NULL) {
+        std::cerr << "Error loading MoorDyn_Create: " << GetLastError() << std::endl;
+        return;
+    }
+
+    MoorDynDofs = (int (*)(MoorDyn, unsigned int* n))GetProcAddress(hMod, "MoorDyn_NCoupledDOF");
+    if (MoorDynDofs == NULL) {
+        std::cerr << "Error loading MoorDyn_NCoupledDOF: " << GetLastError() << std::endl;
+        return;
+    }
+
+    MoorDynInit = (int (*)(MoorDyn, const double*, const double*))GetProcAddress(hMod, "MoorDyn_Init");
+    if (MoorDynInit == NULL) {
+        std::cerr << "Error loading MoorDyn_Init: " << GetLastError() << std::endl;
+        return;
+    }
+
+    MoorDynStep =
+        (int (*)(MoorDyn, const double*, const double*, double*, double*, double*))GetProcAddress(hMod, "MoorDyn_Step");
+    if (MoorDynStep == NULL) {
+        std::cerr << "Error loading MoorDynStep: " << GetLastError() << std::endl;
+        return;
+    }
+
+    MoorDynClose = (int (*)(MoorDyn))GetProcAddress(hMod, "MoorDyn_Close");
+    if (MoorDynClose == NULL) {
+        std::cerr << "Error loading MoorDynClose: " << GetLastError() << std::endl;
+        return;
+    }
+}
+
+MoorDyn MoorDynDLLHandler::CreateMoorDyn(const char* infilename) {
+    if (MoorDynCreate != NULL) {
+        moordyn_system = MoorDynCreate(infilename);
+    }
+    return moordyn_system;
+}
+
+int MoorDynDLLHandler::InitMoorDyn(MoorDyn system, const double* x, const double* xd) {
+    int initResult = -1;
+    if (MoorDynInit != NULL && system != NULL) {
+        initResult = MoorDynInit(system, x, xd);
+    }
+    return initResult;
+}
+
+int MoorDynDLLHandler::DofsMoorDyn(MoorDyn system, unsigned int* n) {
+    int initResult = -1;
+    if (MoorDynDofs != NULL && system != NULL) {
+        initResult = MoorDynDofs(system, n);
+    }
+    return initResult;
+}
+
+int MoorDynDLLHandler::StepMoorDyn(MoorDyn system,
+                                   const double* x,
+                                   const double* xd,
+                                   double* f,
+                                   double* t,
+                                   double* dt) {
+    int stepResult = -1;
+
+    // Checking for null pointers
+    if (MoorDynStep == NULL) {
+        std::cerr << "MoorDynStep is null" << std::endl;
+    }
+
+    if (system == NULL) {
+        std::cerr << "MoorDyn system is null" << std::endl;
+    }
+
+    //// Checking the integrity of the MoorDyn object
+    //if (system != NULL) {
+    //    try {
+    //        std::string status = system->getSystemStatus();
+    //        std::cout << "System status: " << status << std::endl;
+    //    } catch (const std::exception& ex) {
+    //        std::cerr << "Failed to get system status: " << ex.what() << std::endl;
+    //    }
+    //}
+
+    if (MoorDynStep != NULL && system != NULL) {
+        stepResult = MoorDynStep(system, x, xd, f, t, dt);
+    }
+
+    return stepResult;
+}
+
+void MoorDynDLLHandler::CloseMoorDyn() {
+    if (MoorDynClose != NULL && moordyn_system != NULL) {
+        MoorDynClose(moordyn_system);
+    }
 }
