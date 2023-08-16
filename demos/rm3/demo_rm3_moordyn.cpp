@@ -152,10 +152,11 @@ int main(int argc, char* argv[]) {
     bodies.push_back(float_body1);
     bodies.push_back(plate_body2);
     TestHydro hf(bodies, h5fname, default_dont_add_waves);
-    std::string moorDynDllPath = "C:\\code\\MoorDyn_hc\\MoorDyn_build\\source\\Release\\moordyn.dll";
-    std::string moorDynInputPath = "C:\\code\\HydroChrono\\demos\\rm3\\mooring\\lines.txt";
-    hf.AddMoorDyn(moorDynInputPath, moorDynDllPath, {"body2", "body2", "body2"});  //" C :\\code\\MoorDyn - 2\\compile\\DLL\\MoorDyn_Win64.dll ", " body2 ");
-
+    std::string moorDynDllPath = "C:\\code\\HydroChrono\\include\\moordyn\\moordyn.dll";
+    std::string moorDynInputPath = (DATADIR / "rm3" / "mooring" / "lines.txt").lexically_normal().generic_string();
+    hf.AddMoorDyn(moorDynInputPath, moorDynDllPath, {"body2",  //,
+                  "body2",
+                  "body2"});  //,  //" C :\\code\\MoorDyn - 2\\compile\\DLL\\MoorDyn_Win64.dll ", " body2 ");
 
     //// Debug printing added mass matrix and system mass matrix
     // ChSparseMatrix M;
@@ -195,32 +196,6 @@ int main(int argc, char* argv[]) {
                 // step the simulation forwards
                 system.DoStepDynamics(timestep);
 
-                // Time and timestep for MoorDyn
-                double t  = system.GetChTime();
-                double dt = timestep;
-
-                // Calling MoorDynStep
-                //int status = MoorDynStep(x, xd, f, &t, &dt);
-
-                //for (int i = 0; i < 3; i++) {
-                //    std::cout << f[i] << std::endl;
-                //}
-
-                //// Convert the raw force data into a Chrono::ChVector:
-                //chrono::ChVector<> force_vector(f[0], f[1], f[2]);
-
-                //// Create force and add it to the body
-                //auto moorDynForce = std::make_shared<chrono::ChForce>();
-
-                //// Set direction
-                //moorDynForce->SetDir(force_vector.GetNormalized());
-
-                //// Set magnitude
-                //moorDynForce->SetMforce(force_vector.Length());
-
-                // Attach force to body
-                //plate_body2->AddForce(moorDynForce);
-
                 // append data to std vector
                 time_vector.push_back(system.GetChTime());
                 float_heave_position.push_back(float_body1->GetPos().z());
@@ -239,21 +214,6 @@ int main(int argc, char* argv[]) {
             plate_heave_position.push_back(plate_body2->GetPos().z());
             // step the simulation forwards
             system.DoStepDynamics(timestep);
-
-            //// Get position and velocity from the plate_body2
-            //double x[3], xd[3];
-            //ChVector<> position = plate_body2->GetPos();
-            //x[0]                = position.x();
-            //x[1]                = position.y();
-            //x[2]                = position.z();
-            //ChVector<> velocity = plate_body2->GetPos_dt();
-            //xd[0]               = velocity.x();
-            //xd[1]               = velocity.y();
-            //xd[2]               = velocity.z();
-            //
-            //// The force array that will receive forces from MoorDyn
-            //double f[3];
-
             frame++;
         }
         //hf.EndSimulation();

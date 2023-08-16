@@ -19,8 +19,7 @@
 
 #include <hydroc/h5fileinfo.h>
 #include <hydroc/wave_types.h>
-
-#include "C:\\code\\MoorDyn_hc\\MoorDyn\\source\\MoorDyn2.h"
+#include <moordyn/MoorDyn2.h>
 
 using namespace chrono;
 using namespace chrono::fea;
@@ -138,14 +137,15 @@ class TestHydro {
      * 
      * This function initializes any variables needed for moordyn.
      *
-     * @param lines string location of input file lines.txt
-     * @param dll_loc string location of moordyn dll
-     * @param bod_name string name of body to attach moorings to, must match body name from h5 file
+     * @param moorDynInputPath string location of input file lines.txt
+     * @param moorDynDllPath string location of moordyn dll
+     * @param mooredBodies vector of string names of bodies to attach moorings to (must match body's name in .h5 file)
      */
     //void AddMoorings(std::string lines, std::string dll_loc, std::string bod_name);
     void AddMoorDyn(std::string moorDynInputPath,
                     std::string moorDynDllPath,
-                    std::vector<std::string> bodyNames);
+                    std::vector<std::string> mooredBodiesInput);
+    std::vector<std::string> mooredBodies;
     /**
      * @brief Computes the mooring force for all bodies with moorings attached.
      * @return 6N dimensional mooring force
@@ -179,6 +179,7 @@ class TestHydro {
      * @brief list of pairs of the 0 indexed body to attach moorings to from line.txt file given by string.
     */
     std::vector<std::pair<int, std::string>> moordyn_input;
+    //std::vector<std::string> mooredBodies;
     HydroData file_info;
     std::vector<ForceFunc6d> force_per_body;
     double sumVelHistoryAndRIRF;
@@ -201,6 +202,7 @@ class TestHydro {
     // double freq_interp_val;
     std::vector<double> velocity_history;  // use helper function to access vel_history elements correctly
     double prev_time;
+    double current_time;
     Eigen::VectorXd rirf_time_vector;  // (should be the same for each body?)
     int offset_rirf;
     std::shared_ptr<ChLoadContainer> my_loadcontainer;

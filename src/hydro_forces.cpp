@@ -8,7 +8,7 @@
 
 #include <algorithm>
 
-#include "C:/code/MoorDyn-2/source/MoorDyn2.h"
+//#include "C:/code/MoorDyn-2/source/MoorDyn2.h"
 #include <cmath>
 #include <memory>
 #include <numeric>  // std::accumulate
@@ -453,12 +453,62 @@ void TestHydro::AddWaves(std::shared_ptr<WaveBase> waves) {
     user_waves->Initialize();
 }
 
+//void TestHydro::AddMoorDyn(std::string moorDynInputPath,
+//                           std::string moorDynDllPath,
+//                           std::vector<std::string> mooredBodies) {
+//    this->mooredBodies = mooredBodies;
+//    moordyn_on         = true;
+//
+//    int x_dofs = 3 * mooredBodies.size();
+//    std::vector<double> x(x_dofs);
+//    std::vector<double> xd(x_dofs);
+//
+//    // Fill the vectors x and xd
+//    // This assumes all 
+//    for (size_t i = 0; i < mooredBodies.size(); ++i) {
+//        std::string bodyName     = mooredBodies[i];
+//        std::string bodyNameCopy = bodyName;
+//        int temp_b               = stoi(bodyNameCopy.erase(0, 4)) - 1; // this assumes 'body1', 'body2', 'body3' naming convention of ChBodies.
+//        moordyn_input.emplace_back(temp_b, moorDynInputPath);
+//
+//        std::shared_ptr<chrono::ChBody> current_bod = bodies[temp_b];
+//        x[i * 3]                                    = current_bod->GetPos().x();
+//        x[i * 3 + 1]                                = current_bod->GetPos().y();
+//        x[i * 3 + 2]                                = current_bod->GetPos().z();
+//
+//        xd[i * 3]     = current_bod->GetPos_dt().x();
+//        xd[i * 3 + 1] = current_bod->GetPos_dt().y();
+//        xd[i * 3 + 2] = current_bod->GetPos_dt().z();
+//    }
+//
+//    auto dllHandler = std::make_unique<MoorDynDLLHandler>();
+//    dllHandler->LoadMoorDyn(moorDynDllPath);
+//
+//    // If you need multple MoorDyn instances, this will need to change...
+//    // Create the MoorDyn system using the input file
+//    MoorDyn moordyn_system = dllHandler->CreateMoorDyn(moorDynInputPath.c_str());
+//    if (moordyn_system == NULL) {
+//        std::cerr << "Failed to create MoorDyn system" << std::endl;
+//    }
+//
+//    // Set the MoorDyn system in the DLLHandler
+//    dllHandler->SetMoorDynSystem(moordyn_system);
+//
+//    // Initialize the MoorDyn system
+//    int initResult = dllHandler->InitMoorDyn(moordyn_system, x.data(), xd.data());
+//
+//    if (initResult != 0) {
+//        std::cerr << "Failed to initialize MoorDyn system" << std::endl;
+//    }
+//}
+
 void TestHydro::AddMoorDyn(std::string moorDynInputPath,
                            std::string moorDynDllPath,
-                           std::vector<std::string> bodyNames) {
+                           std::vector<std::string> mooredBodiesInput) {
     moordyn_on = true;
+    mooredBodies = mooredBodiesInput;
 
-    for (const auto& bodyName : bodyNames) {
+    for (const auto& bodyName : mooredBodies) {
         std::string bodyNameCopy = bodyName;
         int temp_b               = stoi(bodyNameCopy.erase(0, 4)) - 1;
         moordyn_input.emplace_back(temp_b, moorDynInputPath);
@@ -507,62 +557,77 @@ void TestHydro::AddMoorDyn(std::string moorDynInputPath,
 
 
 Eigen::VectorXd TestHydro::ComputeForceMoorDyn() {
-    std::cout << "Starting ComputeForceMoorDyn()" << std::endl;
     if (!moordyn_on) {
         std::cout << "Moordyn is off" << std::endl;
         return force_mooring;  // should be all 0s from coordinateFunc
     }
+    auto the_system         = bodies[0]->GetSystem();
+    auto the_TimerStep      = the_system->GetTimerStep();
+    auto the_Step           = the_system->GetStep();
+    auto the_Time           = the_system->GetChTime();
+
+    std::cout << "the_Time : " << the_Time << std::endl;
+    std::cout << "the_TimerStep : " << the_TimerStep << std::endl;
+    std::cout << "the_Step " << the_Step << std::endl;
 
     double dt = 0.01;
+    int num_mooring_attachments = mooredBodies.size();
+    // Create position and velocity vectors for moordyn
+    double* x  = new double[num_mooring_attachments * 3];
+    double* xd = new double[num_mooring_attachments * 3];
+    // Create force vector for moordyn
+    double* f = new double[num_mooring_attachments * 3];
 
-    // Initialize a new force vector with all zeros
-    Eigen::VectorXd force_mooring_new = Eigen::VectorXd::Zero(force_mooring.size());
+    // Fill the vectors x and xd
+    for (size_t i = 0; i < num_mooring_attachments; ++i) {
+        // Extract the body index from the name
+        std::string bodyName = mooredBodies[i];
+        int bodyIndex        = std::stoi(bodyName.substr(4));  // Start at 4 to skip "body"
 
-    for (size_t i = 0; i < moordyn_input.size(); ++i) {
-        double x[3], xd[3];
-        ChVector<> position = bodies[moordyn_input[i].first]->GetPos();
-        x[0]                = position.x();
-        x[1]                = position.y();
-        x[2]                = position.z();
+        if (bodies[bodyIndex-1]) {
+            ChVector<> position = bodies[bodyIndex-1]->GetPos();
+            x[i * 3]            = position.x();
+            x[i * 3 + 1]        = position.y();
+            x[i * 3 + 2]        = position.z();
 
-        ChVector<> velocity = bodies[moordyn_input[i].first]->GetPos_dt();
-        xd[0]               = velocity.x();
-        xd[1]               = velocity.y();
-        xd[2]               = velocity.z();
+            ChVector<> velocity = bodies[bodyIndex-1]->GetPos_dt();
+            xd[i * 3]           = velocity.x();
+            xd[i * 3 + 1]       = velocity.y();
+            xd[i * 3 + 2]       = velocity.z();
 
-        double f[3] = {};  // all elements are 0.0
-
-        std::cout << "Preparing to call StepMoorDyn()" << std::endl;
-
-        int result = dllHandlers[i]->StepMoorDyn(dllHandlers[i]->GetMoorDynSystem(), x, xd, f, &prev_time, &dt);
-        if (result != 0) {
-            std::cerr << "Failed to step MoorDyn system" << std::endl;
-            continue;
+        } else {
+            std::cout << "Body " << bodyIndex - 1 << " is null" << std::endl;
         }
-
-        std::cout << "StepMoorDyn() completed" << std::endl;
-
-        for (int dof = 0; dof < 3; dof++) {
-            int index = moordyn_input[i].first * 6 + dof;
-            if (index >= force_mooring_new.size()) {
-                std::cout << "Index out of range: " << index << std::endl;
-            } else {
-                // Add the force contribution of the current body to the global force vector
-                force_mooring_new[index] += f[dof];
-            }
-        }
-
-        std::cout << "Finished filling force_mooring for " << moordyn_input[i].first << std::endl;
     }
 
-    std::cout << "force_mooring: " << force_mooring_new << std::endl;
-    std::cout << "End of ComputeForceMoorDyn, force_mooring size: " << force_mooring_new.size() << std::endl;
+    // std::cout << "prev_time :" << prev_time << std::endl;
+    double temp_prev_time = prev_time;
+    int result = dllHandlers[0]->StepMoorDyn(dllHandlers[0]->GetMoorDynSystem(), x, xd, f, &temp_prev_time, &dt);
+    if (result != 0) {
+        std::cerr << "Failed to step MoorDyn system" << std::endl;
+    }
 
-    // Replace the old force vector with the new one
-    force_mooring = force_mooring_new;
+    // Process the resulting forces
+    for (size_t i = 0; i < num_mooring_attachments; ++i) {
+        // Extract the body index from the name
+        std::string bodyName = mooredBodies[i];
+        int bodyIndex        = std::stoi(bodyName.substr(4)) - 1;  // Start at 4 to skip "body"
 
-    return force_mooring;
+        for (int dof = 0; dof < 3; dof++) {
+            int index = bodyIndex * 6 + dof;
+            if (index >= force_mooring.size()) {
+            } else {
+                force_mooring[index] += f[i * 3 + dof];  // Use 'i * 3 + dof' to get corresponding force
+            }
+        }
+    }
+
+    // Deallocate memory after usage
+    delete[] x;
+    delete[] xd;
+    delete[] f;
 }
+
 
 
 
@@ -855,10 +920,14 @@ double TestHydro::coordinateFunc(int b, int i) {
     }
     // update current time and total_force for this step
     prev_time = bodies[0]->GetChTime();
-
+    //std::cout << "prev_time_0 :" << prev_time << std::endl;
+    //auto chrono_system = bodies[0]->GetSystem();
+    //auto current_timestep = chrono_system->GetChTime();
+    //current_timestep_size = chrono_system->GetStep();
+    //std::cout << "current_timestep :" << current_timestep << std::endl;
+    //std::cout << "current_timestep_size :" << current_timestep_size << std::endl;
     // reset forces to 0
     // TODO change forces to Eigen::VectorXd types, might need to force evaluation of eigen at some point?
-    std::cout << "setting hydrodynamic forces to zero..." << std::endl;
 
     std::fill(total_force.begin(), total_force.end(), 0.0);
     std::fill(force_hydrostatic.begin(), force_hydrostatic.end(), 0.0);
@@ -877,16 +946,16 @@ double TestHydro::coordinateFunc(int b, int i) {
     //force_waves             = ComputeForceWaves();
     ComputeForceMoorDyn();
 
-    std::cout << "testing some stuff here..." << std::endl;
+    //std::cout << "force_mooring: " << force_mooring << std::endl;
 
     // TODO once all force components are Eigen, remove this from being a loop
     for (int i = 0; i < total_dofs; i++) {
-        std::cout << "Index: " << i << std::endl;
-        std::cout << "force_hydrostatic[i]: " << force_hydrostatic[i] << std::endl;
-        std::cout << "force_radiation_damping[i]: " << force_radiation_damping[i] << std::endl;
-        std::cout << "force_mooring[i]: " << force_mooring[i] << std::endl;
-        total_force[i] = force_hydrostatic[i] - force_radiation_damping[i];//+force_mooring[i];  //+ force_waves[i]
-        std::cout << "total_force[i]: " << total_force[i] << std::endl;
+        //std::cout << "Index: " << i << std::endl;
+        //std::cout << "force_hydrostatic[i]: " << force_hydrostatic[i] << std::endl;
+        //std::cout << "force_radiation_damping[i]: " << force_radiation_damping[i] << std::endl;
+        //std::cout << "force_mooring[i]: " << force_mooring[i] << std::endl;
+        total_force[i] = force_hydrostatic[i] - force_radiation_damping[i] + force_mooring[i];  //+ force_waves[i]
+        //std::cout << "total_force[i]: " << total_force[i] << std::endl;
     }
 
     if (body_num_offset + i < 0 || body_num_offset >= total_dofs) {
