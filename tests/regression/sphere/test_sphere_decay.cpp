@@ -1,0 +1,166 @@
+#include <hydroc/gui/guihelper.h>
+#include <hydroc/helper.h>
+#include <hydroc/hydro_forces.h>
+
+#include <chrono/core/ChRealtimeStep.h>
+#include <chrono/physics/ChBodyEasy.h>
+#include <chrono/physics/ChSystemNSC.h>
+
+#include "chrono_postprocess/ChGnuPlot.h"
+
+#include <chrono>   // std::chrono::high_resolution_clock::now
+#include <iomanip>  // std::setprecision
+#include <vector>   // std::vector<double>
+
+// Use the namespaces of Chrono
+using namespace chrono;
+
+int main(int argc, char* argv[]) {
+    std::cout << "Chrono version: " << CHRONO_VERSION << "\n\n";
+
+    // Parse CLI arguments and initialize environment
+    bool profilingOn     = true;
+    bool saveDataOn      = true;
+    bool plotOn          = true;
+    bool visualizationOn = true;
+    std::string data_dir;
+    if (!hydroc::GetCLIArguments(argc, argv, "Sphere decay regression test", saveDataOn, profilingOn, plotOn,
+                                 visualizationOn, data_dir))
+        return 1;
+    if (!hydroc::SetInitialEnvironment(data_dir)) return 1;
+
+    // Get model file names
+    std::filesystem::path DATADIR(hydroc::getDataDir());
+
+    auto body1_meshfame =
+        (DATADIR / "demos" / "sphere" / "geometry" / "oes_task10_sphere.obj").lexically_normal().generic_string();
+    auto h5fname = (DATADIR / "demos" / "sphere" / "hydroData" / "sphere.h5").lexically_normal().generic_string();
+
+    // system/solver settings
+    ChSystemNSC system;
+
+    system.SetGravitationalAcceleration(ChVector3d(0.0, 0.0, -9.81));
+
+    double timestep = 0.015;
+    system.SetSolverType(ChSolver::Type::GMRES);
+    system.GetSolver()->AsIterative()->SetMaxIterations(
+        300);  // the higher, the easier to keep the constraints satisfied.
+    ChRealtimeStepTimer realtime_timer;
+    double simulationDuration = 40.0;
+
+    // Create user interface
+    std::shared_ptr<hydroc::gui::UI> pui = hydroc::gui::CreateUI(visualizationOn);
+
+    hydroc::gui::UI& ui = *pui.get();
+
+    // Output timeseries
+    std::vector<double> time_vector;
+    std::vector<double> heave_position;
+
+    // set up body from a mesh
+    std::cout << "Attempting to open mesh file: " << body1_meshfame << std::endl;
+    std::shared_ptr<ChBody> sphereBody = chrono_types::make_shared<ChBodyEasyMesh>(  //
+        body1_meshfame,                                                              // file name
+        1000,                                                                        // density
+        false,  // do not evaluate mass automatically
+        true,   // create visualization asset
+        false   // do not collide
+    );
+
+    // define the body's initial conditions
+    sphereBody->SetName("body1");  // must set body name correctly! (must match .h5 file)
+    sphereBody->SetPos(ChVector3d(0, 0, -1));
+    sphereBody->SetMass(261.8e3);
+
+    // Create a visualization material
+    auto cadet_blue = chrono_types::make_shared<ChVisualMaterial>();
+    cadet_blue->SetDiffuseColor(ChColor(0.3f, 0.1f, 0.1f));
+    sphereBody->GetVisualShape(0)->SetMaterial(0, cadet_blue);
+
+    system.Add(sphereBody);
+
+    // define wave parameters (not used in this demo)
+    // Todo define a way to use HydroForces without hydro_inputs/waves
+    // HydroInputs my_hydro_inputs;
+    // my_hydro_inputs.mode = WaveMode::noWaveCIC;
+    // my_hydro_inputs.regular_wave_amplitude = 0.022;
+    // my_hydro_inputs.regular_wave_omega = 2.10;
+
+    auto default_dont_add_waves = std::make_shared<NoWave>(1);
+
+    // attach hydrodynamic forces to body
+    std::vector<std::shared_ptr<ChBody>> bodies;
+    bodies.push_back(sphereBody);
+
+    HydroForces hydro_forces(bodies, h5fname);
+    hydro_forces.AddWaves(default_dont_add_waves);
+
+    // for profiling
+    auto start = std::chrono::high_resolution_clock::now();
+
+    // main simulation loop
+    ui.Init(&system, "Sphere - Decay Test");
+    ui.simulationStarted = true;
+
+    while (system.GetChTime() <= simulationDuration) {
+        if (ui.IsRunning(timestep) == false) break;
+
+        if (ui.simulationStarted) {
+            system.DoStepDynamics(timestep);
+
+            // append data to output vector
+            time_vector.push_back(system.GetChTime());
+            heave_position.push_back(sphereBody->GetPos().z());
+        }
+    }
+
+    // for profiling
+    auto end          = std::chrono::high_resolution_clock::now();
+    unsigned duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+
+    std::string out_dir = hydroc::getTestOutDir();
+    if (profilingOn || saveDataOn) {
+        out_dir = out_dir + "/" + RESULTS_DIR_NAME;
+        std::filesystem::create_directory(std::filesystem::path(out_dir));
+    }
+
+    if (profilingOn) {
+        std::ofstream profilingFile(out_dir + "/" + RESULTS_FILE_NAME + "_duration.txt");
+        if (profilingFile.is_open()) {
+            profilingFile << duration << " ms\n";
+            profilingFile.close();
+        } else {
+            std::cout << "Error: Could not open profiling file for writing." << std::endl;
+        }
+    }
+
+    if (saveDataOn) {
+        std::ofstream outputFile(out_dir + "/" + RESULTS_FILE_NAME + ".txt");
+        if (outputFile.is_open()) {
+            outputFile << std::left << std::setw(10) << "Time (s)" << std::right << std::setw(12)
+                       << "Heave (m)"
+                       //<< std::right << std::setw(18) << "Heave Vel (m/s)"
+                       //<< std::right << std::setw(18) << "Heave Force (N)"
+                       << std::endl;
+            for (size_t i = 0; i < time_vector.size(); ++i)
+                outputFile << std::left << std::setw(12) << std::setprecision(6) << std::fixed << time_vector[i]
+                           << std::right << std::setw(12) << std::setprecision(6) << std::fixed << heave_position[i]
+                           << std::endl;
+            outputFile.close();
+        } else {
+            std::cout << "Error: Could not open output file for writing." << std::endl;
+            return 1;  // Return an error code
+        }
+    }
+
+    if (plotOn) {
+        postprocess::ChGnuPlot gplot(out_dir + "/sphere_decay.gpl");
+        gplot.SetGrid();
+        gplot.SetLabelX("time (s)");
+        gplot.SetLabelY("heave (m)");
+        gplot.SetTitle("Sphere decay");
+        gplot.Plot(time_vector, heave_position, "", " with lines lt rgb '#FF5500' lw 2");
+    }
+
+    return 0;
+}

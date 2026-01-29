@@ -1,8 +1,11 @@
+#include <hydroc/config.h>
 #include <hydroc/gui/guihelper.h>
 #include <hydroc/helper.h>
 #include <hydroc/hydro_forces.h>
 
 #include <chrono/core/ChRealtimeStep.h>
+#include <chrono/physics/ChBodyEasy.h>
+#include <chrono/physics/ChSystemNSC.h>
 
 #include <chrono>  // std::chrono::high_resolution_clock::now
 #include <filesystem>
@@ -12,14 +15,7 @@
 // Use the namespaces of Chrono
 using namespace chrono;
 
-// usage: ./<demos>.exe [DATADIR] [--nogui]
-//
-// If no argument is given user can set HYDROCHRONO_DATA_DIR
-// environment variable to give the data_directory.
-//
 int main(int argc, char* argv[]) {
-    SetChronoDataPath(CHRONO_DATA_DIR);
-
     std::vector<double> task10_wave_amps_0005 = {0.044, 0.078, 0.095, 0.123, 0.177, 0.24, 0.314, 0.397, 0.491, 0.594};
     std::vector<double> task10_wave_amps_002  = {0.177, 0.314, 0.380, 0.491, 0.706, 0.961, 1.256, 1.589, 1.962, 2.374};
     std::vector<double> task10_wave_amps      = task10_wave_amps_002;
@@ -28,29 +24,30 @@ int main(int argc, char* argv[]) {
                                       0.897597901, 0.785398163, 0.698131701, 0.628318531, 0.571198664};
     double task10_damping_coeffs[] = {398736.034, 118149.758, 90080.857,  161048.558, 322292.419,
                                       479668.979, 633979.761, 784083.286, 932117.647, 1077123.445};
-    int reg_wave_num_max           = task10_wave_amps.size();
+    int reg_wave_num_max           = (int)task10_wave_amps.size();
 
-    std::cout << reg_wave_num_max;
+    std::cout << "Num waves: " << reg_wave_num_max << std::endl;
 
     for (int reg_wave_num = 1; reg_wave_num <= reg_wave_num_max; ++reg_wave_num) {
-        std::cout << "Chrono version: " << CHRONO_VERSION << "\n\n";
+        std::cout << reg_wave_num << "  ";
 
-        if (hydroc::SetInitialEnvironment(argc, argv) != 0) {
+        // Parse CLI arguments and initialize environment
+        bool profilingOn     = true;
+        bool saveDataOn      = true;
+        bool plotOn          = true;
+        bool visualizationOn = true;
+        std::string data_dir;
+        if (!hydroc::GetCLIArguments(argc, argv, "Sphere regular waves demo", saveDataOn, profilingOn, plotOn,
+                                     visualizationOn, data_dir))
             return 1;
-        }
-
-        // Check if --nogui option is set as 2nd argument
-        bool visualizationOn = false;
-        if (argc > 2 && std::string("--nogui").compare(argv[2]) == 0) {
-            visualizationOn = false;
-        }
+        if (!hydroc::SetInitialEnvironment(data_dir)) return 1;
 
         // Get model file names
         std::filesystem::path DATADIR(hydroc::getDataDir());
 
         auto body1_meshfname =
-            (DATADIR / "sphere" / "geometry" / "oes_task10_sphere.obj").lexically_normal().generic_string();
-        auto h5fname = (DATADIR / "sphere" / "hydroData" / "sphere.h5").lexically_normal().generic_string();
+            (DATADIR / "demos" / "sphere" / "geometry" / "oes_task10_sphere.obj").lexically_normal().generic_string();
+        auto h5fname = (DATADIR / "demos" / "sphere" / "hydroData" / "sphere.h5").lexically_normal().generic_string();
 
         // system/solver settings
         ChSystemNSC system;
@@ -74,10 +71,6 @@ int main(int argc, char* argv[]) {
         ground->SetTag(-1);
         ground->SetFixed(true);
         ground->EnableCollision(false);
-
-        // some io/viz options
-        bool profilingOn = true;
-        bool saveDataOn  = true;
 
         // Output timeseries
         std::vector<double> time_vector;
@@ -112,13 +105,12 @@ int main(int argc, char* argv[]) {
 
         // Create the spring between body_1 and ground. The spring end points are
         // specified in the body relative frames.
-        double rest_length  = 3.0;
         double spring_coef  = 0.0;
         double damping_coef = task10_damping_coeffs[reg_wave_num - 1];
         auto spring_1       = chrono_types::make_shared<ChLinkTSDA>();
         spring_1->Initialize(sphereBody, ground, false, ChVector3d(0, 0, -2),
                              ChVector3d(0, 0, -5));  // false means positions are in global frame
-        // spring_1->SetRestLength(rest_length); // if not set, the rest length is calculated from initial position
+        // Note: rest length is calculated from initial position when not explicitly set
         spring_1->SetSpringCoefficient(spring_coef);
         spring_1->SetDampingCoefficient(damping_coef);
         system.AddLink(spring_1);
@@ -154,41 +146,20 @@ int main(int argc, char* argv[]) {
         auto end          = std::chrono::high_resolution_clock::now();
         unsigned duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
+        std::string out_dir = hydroc::getDemoOutDir();
+        if (profilingOn || saveDataOn) {
+            out_dir = out_dir + "/" + RESULTS_DIR_NAME;
+            std::filesystem::create_directory(std::filesystem::path(out_dir));
+        }
+
         if (profilingOn) {
-            std::string out_file = "./results/sphere_reg_waves_" + std::to_string(reg_wave_num) + "_duration.txt";
-            std::ofstream outputFile(out_file);
-            // profilingFile.open("./results/sphere_reg_waves_duration.txt");
-            if (!outputFile.is_open()) {
-                if (!std::filesystem::exists("./results")) {
-                    std::cout << "Path " << std::filesystem::absolute("./results")
-                              << " does not exist, creating it now..." << std::endl;
-                    std::filesystem::create_directories("./results");
-                    outputFile.open(out_file);
-                    if (!outputFile.is_open()) {
-                        std::cout << "Still cannot open file, ending program" << std::endl;
-                        return 0;
-                    }
-                }
-            }
+            std::ofstream outputFile(out_dir + "/reg_waves_" + std::to_string(reg_wave_num) + "_duration.txt");
             outputFile << duration << "\n";
             outputFile.close();
         }
 
         if (saveDataOn) {
-            std::string out_file = "./results/sphere_reg_waves_" + std::to_string(reg_wave_num) + ".txt";
-            std::ofstream outputFile(out_file);
-            if (!outputFile.is_open()) {
-                if (!std::filesystem::exists("./results")) {
-                    std::cout << "Path " << std::filesystem::absolute("./results")
-                              << " does not exist, creating it now..." << std::endl;
-                    std::filesystem::create_directories("./results");
-                    outputFile.open(out_file);
-                    if (!outputFile.is_open()) {
-                        std::cout << "Still cannot open file, ending program" << std::endl;
-                        return 0;
-                    }
-                }
-            }
+            std::ofstream outputFile(out_dir + "/reg_waves_" + std::to_string(reg_wave_num) + ".txt");
             outputFile.precision(10);
             outputFile.width(12);
             outputFile << "Wave #: \t" << reg_wave_num << "\n";
@@ -199,7 +170,7 @@ int main(int argc, char* argv[]) {
                        //<< std::right << std::setw(18) << "Heave Vel (m/s)"
                        //<< std::right << std::setw(18) << "Heave Force (N)"
                        << std::endl;
-            for (int i = 0; i < time_vector.size(); ++i)
+            for (size_t i = 0; i < time_vector.size(); ++i)
                 outputFile << std::left << std::setw(10) << std::setprecision(2) << std::fixed << time_vector[i]
                            << std::right << std::setw(12) << std::setprecision(4) << std::fixed << heave_position[i]
                            << std::endl;

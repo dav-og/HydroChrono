@@ -12,6 +12,8 @@
 
  */
 
+//// RADU - does this need to be public?
+
 #pragma once
 
 #include <cstddef>
@@ -21,11 +23,9 @@
 #include <vector>
 
 // Version information - these may be provided by the build system
+// Note: Use HYDROCHRONO_* prefixed macros to avoid conflicts with Chrono's ChVersion.h
 #ifndef HYDROCHRONO_VERSION
     #define HYDROCHRONO_VERSION "unknown"
-#endif
-#ifndef CHRONO_VERSION
-    #define CHRONO_VERSION "unknown"
 #endif
 #ifndef HYDROCHRONO_BUILD_TYPE
     #define HYDROCHRONO_BUILD_TYPE "unknown"

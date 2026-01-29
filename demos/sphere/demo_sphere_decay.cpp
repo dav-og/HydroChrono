@@ -3,6 +3,10 @@
 #include <hydroc/hydro_forces.h>
 
 #include <chrono/core/ChRealtimeStep.h>
+#include <chrono/physics/ChBodyEasy.h>
+#include <chrono/physics/ChSystemNSC.h>
+
+#include "chrono_postprocess/ChGnuPlot.h"
 
 #include <chrono>      // std::chrono::high_resolution_clock::now
 #include <filesystem>  // c++17 only
@@ -12,32 +16,26 @@
 // Use the namespaces of Chrono
 using namespace chrono;
 
-// usage: ./sphere_deca.exe [DATADIR] [--nogui]
-//
-// If no argument is given user can set HYDROCHRONO_DATA_DIR
-// environment variable to give the data_directory.
-//
 int main(int argc, char* argv[]) {
     std::cout << "Chrono version: " << CHRONO_VERSION << "\n\n";
 
-    SetChronoDataPath(CHRONO_DATA_DIR);
-
-    if (hydroc::SetInitialEnvironment(argc, argv) != 0) {
-        return 1;
-    }
-
-    // Check if --nogui option is set as 2nd argument
+    // Parse CLI arguments and initialize environment
+    bool profilingOn     = true;
+    bool saveDataOn      = true;
+    bool plotOn          = true;
     bool visualizationOn = true;
-    if (argc > 2 && std::string("--nogui").compare(argv[2]) == 0) {
-        visualizationOn = false;
-    }
+    std::string data_dir;
+    if (!hydroc::GetCLIArguments(argc, argv, "Sphere decay demo", saveDataOn, profilingOn, plotOn, visualizationOn,
+                                 data_dir))
+        return 1;
+    if (!hydroc::SetInitialEnvironment(data_dir)) return 1;
 
     // Get model file names
     std::filesystem::path DATADIR(hydroc::getDataDir());
 
     auto body1_meshfame =
-        (DATADIR / "sphere" / "geometry" / "oes_task10_sphere.obj").lexically_normal().generic_string();
-    auto h5fname = (DATADIR / "sphere" / "hydroData" / "sphere.h5").lexically_normal().generic_string();
+        (DATADIR / "demos" / "sphere" / "geometry" / "oes_task10_sphere.obj").lexically_normal().generic_string();
+    auto h5fname = (DATADIR / "demos" / "sphere" / "hydroData" / "sphere.h5").lexically_normal().generic_string();
 
     // system/solver settings
     ChSystemNSC system;
@@ -55,9 +53,6 @@ int main(int argc, char* argv[]) {
     std::shared_ptr<hydroc::gui::UI> pui = hydroc::gui::CreateUI(visualizationOn);
 
     hydroc::gui::UI& ui = *pui.get();
-
-    bool profilingOn = true;
-    bool saveDataOn  = true;
 
     // Output timeseries
     std::vector<double> time_vector;
@@ -101,7 +96,7 @@ int main(int argc, char* argv[]) {
     TestHydro hydro_forces(bodies, h5fname);
     hydro_forces.AddWaves(default_dont_add_waves);
 
-    // for profilingvisualizationOn = false;
+    // for profiling
     auto start = std::chrono::high_resolution_clock::now();
 
     // main simulation loop
@@ -123,53 +118,40 @@ int main(int argc, char* argv[]) {
     auto end          = std::chrono::high_resolution_clock::now();
     unsigned duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
+    std::string out_dir = hydroc::getDemoOutDir();
+    if (profilingOn || saveDataOn) {
+        out_dir = out_dir + "/" + RESULTS_DIR_NAME;
+        std::filesystem::create_directory(std::filesystem::path(out_dir));
+    }
+
     if (profilingOn) {
-        std::ofstream profilingFile;
-        profilingFile.open("./results/sphere_decay_duration.txt");
-        if (!profilingFile.is_open()) {
-            if (!std::filesystem::exists("./results")) {
-                std::cout << "Path " << std::filesystem::absolute("./results") << " does not exist, creating it now..."
-                          << std::endl;
-                std::filesystem::create_directory("./results");
-                profilingFile.open("./results/sphere_decay_duration.txt");
-                if (!profilingFile.is_open()) {
-                    // TODO instead of ending program, skip to next saveDataOn if statment
-                    std::cout << "Still cannot open file, ending program" << std::endl;
-                    return 0;
-                }
-            }
-        }
+        std::ofstream profilingFile(out_dir + "/decay_duration.txt");
         profilingFile << duration << " ms\n";
         profilingFile.close();
     }
 
     if (saveDataOn) {
-        std::ofstream outputFile;
-        outputFile.open("./results/sphere_decay.txt");
-        if (!outputFile.is_open()) {
-            if (!std::filesystem::exists("./results")) {
-                std::cout << "Path " << std::filesystem::absolute("./results") << " does not exist, creating it now..."
-                          << std::endl;
-                std::filesystem::create_directory("./results");
-                outputFile.open("./results/sphere_decay.txt");
-                if (!outputFile.is_open()) {
-                    std::cout << "Still cannot open file, ending program" << std::endl;
-                    return 0;
-                }
-            }
-        }
+        std::ofstream outputFile(out_dir + "/decay.txt");
         outputFile << std::left << std::setw(10) << "Time (s)" << std::right << std::setw(12)
                    << "Heave (m)"
                    //<< std::right << std::setw(18) << "Heave Vel (m/s)"
                    //<< std::right << std::setw(18) << "Heave Force (N)"
                    << std::endl;
-        for (int i = 0; i < time_vector.size(); ++i)
+        for (size_t i = 0; i < time_vector.size(); ++i)
             outputFile << std::left << std::setw(12) << std::setprecision(6) << std::fixed << time_vector[i]
                        << std::right << std::setw(12) << std::setprecision(6) << std::fixed << heave_position[i]
                        << std::endl;
         outputFile.close();
     }
 
-    std::cout << "Simulation finished." << std::endl;
+    if (plotOn) {
+        postprocess::ChGnuPlot gplot(out_dir + "/sphere_decay.gpl");
+        gplot.SetGrid();
+        gplot.SetLabelX("time (s)");
+        gplot.SetLabelY("heave (m)");
+        gplot.SetTitle("Sphere decay");
+        gplot.Plot(time_vector, heave_position, "", " with lines lt rgb '#FF5500' lw 2");
+    }
+
     return 0;
 }

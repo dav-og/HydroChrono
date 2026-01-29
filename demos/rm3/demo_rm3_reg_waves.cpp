@@ -4,6 +4,8 @@
 #include <hydroc/logging.h>
 
 #include <chrono/core/ChRealtimeStep.h>
+#include <chrono/physics/ChBodyEasy.h>
+#include <chrono/physics/ChSystemNSC.h>
 
 #include <chrono>   // std::chrono::high_resolution_clock::now
 #include <iomanip>  // std::setprecision
@@ -12,31 +14,22 @@
 // Use the namespaces of Chrono
 using namespace chrono;
 
-// usage: ./<demos>.exe [DATADIR] [--nogui] [--debug]
-//
-// If no argument is given user can set HYDROCHRONO_DATA_DIR
-// environment variable to give the data_directory.
-//
 int main(int argc, char* argv[]) {
     std::cout << "Chrono version: " << CHRONO_VERSION << "\n\n";
-
-    SetChronoDataPath(CHRONO_DATA_DIR);
 
     // Initialize logging with command line arguments
     // Optional: initialize logging if desired based on args
 
-    if (hydroc::SetInitialEnvironment(argc, argv) != 0) {
-        return 1;
-    }
-
-    // Check for --nogui and --debug flags in any order
+    // Parse CLI arguments and initialize environment
+    bool profilingOn     = true;
+    bool saveDataOn      = true;
+    bool plotOn          = true;
     bool visualizationOn = true;
-    for (int i = 1; i < argc; i++) {
-        if (std::string("--nogui").compare(argv[i]) == 0) {
-            visualizationOn = false;
-            break;
-        }
-    }
+    std::string data_dir;
+    if (!hydroc::GetCLIArguments(argc, argv, "RM3 regular waves demo", saveDataOn, profilingOn, plotOn, visualizationOn,
+                                 data_dir))
+        return 1;
+    if (!hydroc::SetInitialEnvironment(data_dir)) return 1;
 
     // Get model file names
     std::filesystem::path DATADIR(hydroc::getDataDir());
@@ -46,9 +39,11 @@ int main(int argc, char* argv[]) {
         std::cout << "Using data directory from environment: " << DATADIR << std::endl;
     }
 
-    auto body1_meshfame = (DATADIR / "rm3" / "geometry" / "float_cog.obj").lexically_normal().generic_string();
-    auto body2_meshfame = (DATADIR / "rm3" / "geometry" / "plate_cog.obj").lexically_normal().generic_string();
-    auto h5fname        = (DATADIR / "rm3" / "hydroData" / "rm3.h5").lexically_normal().generic_string();
+    auto body1_meshfame =
+        (DATADIR / "demos" / "rm3" / "geometry" / "float_cog.obj").lexically_normal().generic_string();
+    auto body2_meshfame =
+        (DATADIR / "demos" / "rm3" / "geometry" / "plate_cog.obj").lexically_normal().generic_string();
+    auto h5fname = (DATADIR / "demos" / "rm3" / "hydroData" / "rm3.h5").lexically_normal().generic_string();
 
     std::cout << "Looking for mesh files in:" << std::endl;
     std::cout << "  body1: " << body1_meshfame << std::endl;
@@ -73,8 +68,6 @@ int main(int argc, char* argv[]) {
     hydroc::gui::UI& ui = *pui.get();
 
     // some io/viz options
-    bool profilingOn = true;
-    bool saveDataOn  = true;
     std::vector<double> time_vector;
     std::vector<double> float_heave_position;
     std::vector<double> float_drift_position;
@@ -142,7 +135,7 @@ int main(int argc, char* argv[]) {
     bodies.push_back(plate_body2);
 
     // define wave parameters
-    auto my_hydro_inputs = std::make_shared<RegularWave>(static_cast<unsigned int>(bodies.size()));
+    auto my_hydro_inputs                     = std::make_shared<RegularWave>(static_cast<unsigned int>(bodies.size()));
     my_hydro_inputs->regular_wave_amplitude_ = 1.0;
     my_hydro_inputs->regular_wave_omega_     = 2.10;
 
@@ -174,43 +167,24 @@ int main(int argc, char* argv[]) {
     auto end          = std::chrono::high_resolution_clock::now();
     unsigned duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
+    std::string out_dir = hydroc::getDemoOutDir();
+    if (profilingOn || saveDataOn) {
+        out_dir = out_dir + "/" + RESULTS_DIR_NAME;
+        std::filesystem::create_directory(std::filesystem::path(out_dir));
+    }
+
     if (profilingOn) {
-        std::ofstream profilingFile;
-        profilingFile.open("./results/rm3_reg_waves_duration.txt");
-        if (!profilingFile.is_open()) {
-            if (!std::filesystem::exists("./results")) {
-                std::cout << "Path " << std::filesystem::absolute("./results") << " does not exist, creating it now..."
-                          << std::endl;
-                std::filesystem::create_directory("./results");
-                profilingFile.open("./results/rm3_reg_waves_duration.txt");
-                if (!profilingFile.is_open()) {
-                    std::cout << "Still cannot open file, ending program" << std::endl;
-                    return 0;
-                }
-            }
-        }
+        std::ofstream profilingFile(out_dir + "/reg_waves_duration.txt");
         profilingFile << duration << " ms\n";
         profilingFile.close();
     }
 
     if (saveDataOn) {
-        // Create results directory if it doesn't exist
-        if (!std::filesystem::exists("./results")) {
-            std::cout << "Creating results directory..." << std::endl;
-            std::filesystem::create_directory("./results");
-        }
-
-        std::ofstream outputFile;
-        outputFile.open("./results/rm3_reg_waves.txt");
-        if (!outputFile.is_open()) {
-            std::cout << "Failed to open output file for writing" << std::endl;
-            return 1;
-        }
-        
+        std::ofstream outputFile(out_dir + "/reg_waves.txt");
         outputFile << std::left << std::setw(10) << "Time (s)" << std::right << std::setw(16) << "Float Heave (m)"
                    << std::right << std::setw(16) << "Plate Heave (m)" << std::right << std::setw(16)
                    << "Float Drift (x) (m)" << std::endl;
-        for (int i = 0; i < time_vector.size(); ++i)
+        for (size_t i = 0; i < time_vector.size(); ++i)
             outputFile << std::left << std::setw(10) << std::setprecision(2) << std::fixed << time_vector[i]
                        << std::right << std::setw(16) << std::setprecision(4) << std::fixed << float_heave_position[i]
                        << std::right << std::setw(16) << std::setprecision(4) << std::fixed << plate_heave_position[i]

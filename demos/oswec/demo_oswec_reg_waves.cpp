@@ -3,7 +3,10 @@
 #include <hydroc/hydro_forces.h>
 
 #include <chrono/core/ChRealtimeStep.h>
-#include <chrono/physics/ChLinkMate.h>  // fixed body uses link
+#include <chrono/physics/ChBodyEasy.h>
+#include <chrono/physics/ChSystemNSC.h>
+
+#include "chrono_postprocess/ChGnuPlot.h"
 
 #include <chrono>   // std::chrono::high_resolution_clock::now
 #include <iomanip>  // std::setprecision
@@ -38,7 +41,7 @@ std::array<double, 3> rotate_vector_3d(std::array<double, 3> vector,
                                        std::array<double, 3> axis,
                                        double angle_in_degrees) {
     // Convert the angle from degrees to radians
-    double angle_in_radians = angle_in_degrees * M_PI / 180.0;
+    double angle_in_radians = angle_in_degrees * CH_DEG_TO_RAD;
 
     // Normalize the axis vector
     axis = normalize(axis);
@@ -58,33 +61,33 @@ std::array<double, 3> add_vectors(std::array<double, 3> v1, std::array<double, 3
     return {v1[0] + v2[0], v1[1] + v2[1], v1[2] + v2[2]};
 }
 
-
 int main(int argc, char* argv[]) {
-
-    SetChronoDataPath(CHRONO_DATA_DIR);
-
-    std::vector<double> periods = {4.0, 6.0, 8.0, 10.0, 12.0, 14.0, 16.0, 18.0, 18.5, 19.0, 19.25, 19.5, 20.0, 21.0, 22.0, 24.0};
-    int reg_wave_num_max        = periods.size();
+    std::vector<double> periods = {4.0,  6.0,  8.0,   10.0, 12.0, 14.0, 16.0, 18.0,
+                                   18.5, 19.0, 19.25, 19.5, 20.0, 21.0, 22.0, 24.0};
+    int reg_wave_num_max        = (int)periods.size();
 
     for (int reg_wave_num = 1; reg_wave_num <= reg_wave_num_max; ++reg_wave_num) {
         std::cout << "Chrono version: " << CHRONO_VERSION << "\n\n";
 
-        if (hydroc::SetInitialEnvironment(argc, argv) != 0) {
+        // Parse CLI arguments and initialize environment
+        bool plotOn          = true;
+        bool visualizationOn = true;
+        bool profilingOn     = true;
+        bool saveDataOn      = true;
+        std::string data_dir;
+        if (!hydroc::GetCLIArguments(argc, argv, "OSWEC regular waves demo", saveDataOn, profilingOn, plotOn,
+                                     visualizationOn, data_dir))
             return 1;
-        }
-
-        // Check if --nogui option is set as 2nd argument
-        bool visualizationOn = false;
-        if (argc > 2 && std::string("--nogui").compare(argv[2]) == 0) {
-            visualizationOn = false;
-        }
+        if (!hydroc::SetInitialEnvironment(data_dir)) return 1;
 
         // Get model file names
         std::filesystem::path DATADIR(hydroc::getDataDir());
 
-        auto body1_meshfname = (DATADIR / "oswec" / "geometry" / "flap.obj").lexically_normal().generic_string();
-        auto body2_meshfname = (DATADIR / "oswec" / "geometry" / "base.obj").lexically_normal().generic_string();
-        auto h5fname        = (DATADIR / "oswec" / "hydroData" / "oswec.h5").lexically_normal().generic_string();
+        auto body1_meshfname =
+            (DATADIR / "demos" / "oswec" / "geometry" / "flap.obj").lexically_normal().generic_string();
+        auto body2_meshfname =
+            (DATADIR / "demos" / "oswec" / "geometry" / "base.obj").lexically_normal().generic_string();
+        auto h5fname = (DATADIR / "demos" / "oswec" / "hydroData" / "oswec.h5").lexically_normal().generic_string();
 
         // system/solver settings
         ChSystemNSC system;
@@ -93,7 +96,7 @@ int main(int argc, char* argv[]) {
         double timestep = 0.03;
         // system.SetTimestepperType(ChTimestepper::Type::HHT);
         system.SetSolverType(ChSolver::Type::GMRES);
-        // system.GetSolver()->AsIterative()->SetMaxIterations(300);  // the higher, the easier to keep the constraints satisfied.
+        // system.GetSolver()->AsIterative()->SetMaxIterations(300);
         ChRealtimeStepTimer realtime_timer;
         double simulationDuration = 1000.0;
 
@@ -102,26 +105,23 @@ int main(int argc, char* argv[]) {
         hydroc::gui::UI& ui                  = *pui.get();
 
         // some io/viz options
-        bool profilingOn = true;
-        bool saveDataOn  = true;
         std::vector<double> time_vector;
         std::vector<double> flap_rot;
 
         std::array<double, 3> origin_to_hinge = {0, 0, -8.9};
         std::array<double, 3> hinge_to_cg     = {0, 0, 5};
         std::array<double, 3> axis            = {0, 1, 0};
-        double angle_in_degrees               = 0.0;
 
-        //std::array<double, 3> rotated_hinge_to_cg = rotate_vector_3d(hinge_to_cg, axis, angle_in_degrees);
+        // std::array<double, 3> rotated_hinge_to_cg = rotate_vector_3d(hinge_to_cg, axis, 0);
 
-        //std::array<double, 3> new_cg = add_vectors(origin_to_hinge, rotated_hinge_to_cg);
+        // std::array<double, 3> new_cg = add_vectors(origin_to_hinge, rotated_hinge_to_cg);
 
-        //std::cout << "The original vector is [" << hinge_to_cg[0] << ", " << hinge_to_cg[1] << ", " << hinge_to_cg[2]
-        //          << "]" << std::endl;
-        //std::cout << "The rotated vector is [" << rotated_hinge_to_cg[0] << ", " << rotated_hinge_to_cg[1] << ", "
-        //          << rotated_hinge_to_cg[2] << "]" << std::endl;
-        //std::cout << "The new vector is [" << new_cg[0] << ", " << new_cg[1] << ", " << new_cg[2] << "]"
-        //          << std::endl;
+        // std::cout << "The original vector is [" << hinge_to_cg[0] << ", " << hinge_to_cg[1] << ", " << hinge_to_cg[2]
+        //           << "]" << std::endl;
+        // std::cout << "The rotated vector is [" << rotated_hinge_to_cg[0] << ", " << rotated_hinge_to_cg[1] << ", "
+        //           << rotated_hinge_to_cg[2] << "]" << std::endl;
+        // std::cout << "The new vector is [" << new_cg[0] << ", " << new_cg[1] << ", " << new_cg[2] << "]"
+        //           << std::endl;
 
         // set up body from a mesh
         std::cout << "Attempting to open mesh file: " << body1_meshfname << std::endl;
@@ -141,10 +141,9 @@ int main(int argc, char* argv[]) {
         // define the float's initial conditions
         system.Add(flap_body);
         flap_body->SetName("body1");
-        auto ang_rad = CH_PI / 18.0;
         // flap_body->SetPos(ChVector3d(new_cg[0], new_cg[1], new_cg[2]));
         flap_body->SetPos(ChVector3d(0.0, 0.0, -3.9));
-        //flap_body->SetRot(QuatFromAngleY(ang_rad));
+        // flap_body->SetRot(QuatFromAngleY(CH_PI / 18.0));
         flap_body->SetMass(127000.0);
         flap_body->SetInertiaXX(ChVector3d(1.85e6, 1.85e6, 1.85e6));
         // notes: mass and inertia added to added mass and system mass correctly.
@@ -199,9 +198,9 @@ int main(int argc, char* argv[]) {
         bodies.push_back(flap_body);
         bodies.push_back(base_body);
 
-        auto my_hydro_inputs                    = std::make_shared<RegularWave>(static_cast<unsigned int>(bodies.size()));
+        auto my_hydro_inputs = std::make_shared<RegularWave>(static_cast<unsigned int>(bodies.size()));
         my_hydro_inputs->regular_wave_amplitude_ = 0.01;
-        my_hydro_inputs->regular_wave_omega_     = (2 * CH_PI)/(periods[reg_wave_num - 1]);
+        my_hydro_inputs->regular_wave_omega_     = (2 * CH_PI) / (periods[reg_wave_num - 1]);
 
         //// attach hydrodynamic forces to body
         /*std::vector<std::shared_ptr<ChBody>> bodies;
@@ -233,64 +232,53 @@ int main(int argc, char* argv[]) {
         auto end          = std::chrono::high_resolution_clock::now();
         unsigned duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
+        std::string out_dir = hydroc::getDemoOutDir();
+        if (profilingOn || saveDataOn) {
+            out_dir = out_dir + "/" + RESULTS_DIR_NAME;
+            std::filesystem::create_directory(std::filesystem::path(out_dir));
+        }
+
         if (profilingOn) {
-            std::ofstream profilingFile;
-            profilingFile.open("./results/oswec/regular_waves/oswec_duration.txt");
-            if (!profilingFile.is_open()) {
-                if (!std::filesystem::exists("./results")) {
-                    std::cout << "Path " << std::filesystem::absolute("./results")
-                              << " does not exist, creating it now..." << std::endl;
-                    std::filesystem::create_directory("./results/");
-                    profilingFile.open("./results/oswec/regular_waves/oswec_duration.txt");
-                    if (!profilingFile.is_open()) {
-                        std::cout << "Still cannot open file, ending program" << std::endl;
-                        return 0;
-                    }
-                }
-            }
+            std::ofstream profilingFile(out_dir + "/reg_waves_" + std::to_string(reg_wave_num) + "_duration.txt");
             profilingFile << duration << "\n";
             profilingFile.close();
         }
 
         if (saveDataOn) {
-            std::string out_file = "./results/oswec/regular_waves/oswec_reg_waves_" + std::to_string(reg_wave_num) + ".txt";
-            std::ofstream outputFile(out_file);
-            if (!outputFile.is_open()) {
-                if (!std::filesystem::exists("./results")) {
-                    std::cout << "Path " << std::filesystem::absolute("./results")
-                              << " does not exist, creating it now..." << std::endl;
-                    std::filesystem::create_directory("./results/");
-                    outputFile.open("./results/oswec_decay.txt");
-                    if (!outputFile.is_open()) {
-                        std::cout << "Still cannot open file, ending program" << std::endl;
-                        return 0;
-                    }
-                }
-            }
-            //outputFile << std::left << std::setw(10) << "Time (s)" << std::right << std::setw(16)
-            //           << "Flap Rotation y (radians)" << std::right << std::setw(16) << "Flap Rotation y (degrees)"
-            //           << std::endl;
-            //for (int i = 0; i < time_vector.size(); ++i)
-            //    outputFile << std::left << std::setw(10) << std::setprecision(2) << std::fixed << time_vector[i]
-            //               << std::right << std::setw(16) << std::setprecision(4) << std::fixed << flap_rot[i]
-            //               << std::right << std::setw(16) << std::setprecision(4) << std::fixed
-            //               << flap_rot[i] * 360.0 / 6.28 << std::endl;
-            //outputFile.close();
+            std::ofstream outputFile(out_dir + "/reg_waves_" + std::to_string(reg_wave_num) + ".txt");
+            // outputFile << std::left << std::setw(10) << "Time (s)" << std::right << std::setw(16)
+            //            << "Flap Rotation y (radians)" << std::right << std::setw(16) << "Flap Rotation y (degrees)"
+            //            << std::endl;
+            // for (int i = 0; i < time_vector.size(); ++i)
+            //     outputFile << std::left << std::setw(10) << std::setprecision(2) << std::fixed << time_vector[i]
+            //                << std::right << std::setw(16) << std::setprecision(4) << std::fixed << flap_rot[i]
+            //                << std::right << std::setw(16) << std::setprecision(4) << std::fixed
+            //                << flap_rot[i] * 360.0 / 6.28 << std::endl;
+            // outputFile.close();
 
             outputFile.precision(10);
             outputFile.width(12);
             outputFile << "Wave #: \t" << reg_wave_num << "\n";
             outputFile << "Wave amplitude (m): \t" << my_hydro_inputs->regular_wave_amplitude_ << "\n";
             outputFile << "Wave omega (rad/s): \t" << my_hydro_inputs->regular_wave_omega_ << "\n";
-            outputFile << std::left << std::setw(10) << "Time (s)" << std::right << std::setw(12)
-                       << "Pitch (rads)"
+            outputFile << std::left << std::setw(10) << "Time (s)" << std::right << std::setw(12) << "Pitch (rads)"
                        << std::endl;
-            for (int i = 0; i < time_vector.size(); ++i)
+            for (size_t i = 0; i < time_vector.size(); ++i)
                 outputFile << std::left << std::setw(10) << std::setprecision(2) << std::fixed << time_vector[i]
                            << std::right << std::setw(12) << std::setprecision(4) << std::fixed << flap_rot[i]
                            << std::endl;
             outputFile.close();
         }
+
+        if (plotOn) {
+            postprocess::ChGnuPlot gplot(out_dir + "/owsec_reg_waves_" + std::to_string(reg_wave_num) + ".gpl");
+            gplot.SetGrid();
+            gplot.SetLabelX("time (s)");
+            gplot.SetLabelY("pitch (rad)");
+            gplot.SetTitle("OSWEC reg waves " + std::to_string(reg_wave_num));
+            gplot.Plot(time_vector, flap_rot, "", " with lines lt rgb '#FF5500' lw 2");
+        }
     }
+
     return 0;
 }

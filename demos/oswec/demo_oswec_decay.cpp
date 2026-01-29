@@ -3,7 +3,10 @@
 #include <hydroc/hydro_forces.h>
 
 #include <chrono/core/ChRealtimeStep.h>
-#include <chrono/physics/ChLinkMate.h>  // fixed body uses link
+#include <chrono/physics/ChBodyEasy.h>
+#include <chrono/physics/ChSystemNSC.h>
+
+#include "chrono_postprocess/ChGnuPlot.h"
 
 #include <chrono>   // std::chrono::high_resolution_clock::now
 #include <iomanip>  // std::setprecision
@@ -38,7 +41,7 @@ std::array<double, 3> rotate_vector_3d(std::array<double, 3> vector,
                                        std::array<double, 3> axis,
                                        double angle_in_degrees) {
     // Convert the angle from degrees to radians
-    double angle_in_radians = angle_in_degrees * M_PI / 180.0;
+    double angle_in_radians = angle_in_degrees * CH_DEG_TO_RAD;
 
     // Normalize the axis vector
     axis = normalize(axis);
@@ -61,24 +64,23 @@ std::array<double, 3> add_vectors(std::array<double, 3> v1, std::array<double, 3
 int main(int argc, char* argv[]) {
     std::cout << "Chrono version: " << CHRONO_VERSION << "\n\n";
 
-    SetChronoDataPath(CHRONO_DATA_DIR);
-
-    if (hydroc::SetInitialEnvironment(argc, argv) != 0) {
-        return 1;
-    }
-
-    // Check if --nogui option is set as 2nd argument
+    // Parse CLI arguments and initialize environment
+    bool profilingOn     = true;
+    bool saveDataOn      = true;
+    bool plotOn          = true;
     bool visualizationOn = true;
-    if (argc > 2 && std::string("--nogui").compare(argv[2]) == 0) {
-        visualizationOn = false;
-    }
+    std::string data_dir;
+    if (!hydroc::GetCLIArguments(argc, argv, "OSWEC decay demo", saveDataOn, profilingOn, plotOn, visualizationOn,
+                                 data_dir))
+        return 1;
+    if (!hydroc::SetInitialEnvironment(data_dir)) return 1;
 
     // Get model file names
     std::filesystem::path DATADIR(hydroc::getDataDir());
 
-    auto body1_meshfame = (DATADIR / "oswec" / "geometry" / "flap.obj").lexically_normal().generic_string();
-    auto body2_meshfame = (DATADIR / "oswec" / "geometry" / "base.obj").lexically_normal().generic_string();
-    auto h5fname        = (DATADIR / "oswec" / "hydroData" / "oswec.h5").lexically_normal().generic_string();
+    auto body1_meshfame = (DATADIR / "demos" / "oswec" / "geometry" / "flap.obj").lexically_normal().generic_string();
+    auto body2_meshfame = (DATADIR / "demos" / "oswec" / "geometry" / "base.obj").lexically_normal().generic_string();
+    auto h5fname        = (DATADIR / "demos" / "oswec" / "hydroData" / "oswec.h5").lexically_normal().generic_string();
 
     // system/solver settings
     ChSystemNSC system;
@@ -97,8 +99,6 @@ int main(int argc, char* argv[]) {
     hydroc::gui::UI& ui                  = *pui.get();
 
     // some io/viz options
-    bool profilingOn = true;
-    bool saveDataOn  = true;
     std::vector<double> time_vector;
     std::vector<double> flap_rot;
 
@@ -215,49 +215,39 @@ int main(int argc, char* argv[]) {
     auto end          = std::chrono::high_resolution_clock::now();
     unsigned duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
+    std::string out_dir = hydroc::getDemoOutDir();
+    if (profilingOn || saveDataOn) {
+        out_dir = out_dir + "/" + RESULTS_DIR_NAME;
+        std::filesystem::create_directory(std::filesystem::path(out_dir));
+    }
+
     if (profilingOn) {
-        std::ofstream profilingFile;
-        profilingFile.open("./results/oswec_duration.txt");
-        if (!profilingFile.is_open()) {
-            if (!std::filesystem::exists("./results")) {
-                std::cout << "Path " << std::filesystem::absolute("./results") << " does not exist, creating it now..."
-                          << std::endl;
-                std::filesystem::create_directory("./results/");
-                profilingFile.open("./results/oswec_duration.txt");
-                if (!profilingFile.is_open()) {
-                    std::cout << "Still cannot open file, ending program" << std::endl;
-                    return 0;
-                }
-            }
-        }
+        std::ofstream profilingFile(out_dir + "/decay_duration.txt");
         profilingFile << duration << "\n";
         profilingFile.close();
     }
 
     if (saveDataOn) {
-        std::ofstream outputFile;
-        outputFile.open("./results/oswec_decay.txt");
-        if (!outputFile.is_open()) {
-            if (!std::filesystem::exists("./results")) {
-                std::cout << "Path " << std::filesystem::absolute("./results") << " does not exist, creating it now..."
-                          << std::endl;
-                std::filesystem::create_directory("./results/");
-                outputFile.open("./results/oswec_decay.txt");
-                if (!outputFile.is_open()) {
-                    std::cout << "Still cannot open file, ending program" << std::endl;
-                    return 0;
-                }
-            }
-        }
+        std::ofstream outputFile(out_dir + "/decay.txt");
         outputFile << std::left << std::setw(10) << "Time (s)" << std::right << std::setw(16)
                    << "Flap Rotation y (radians)" << std::right << std::setw(16) << "Flap Rotation y (degrees)"
                    << std::endl;
-        for (int i = 0; i < time_vector.size(); ++i)
+        for (size_t i = 0; i < time_vector.size(); ++i)
             outputFile << std::left << std::setw(10) << std::setprecision(2) << std::fixed << time_vector[i]
                        << std::right << std::setw(16) << std::setprecision(4) << std::fixed << flap_rot[i] << std::right
                        << std::setw(16) << std::setprecision(4) << std::fixed << flap_rot[i] * 360.0 / 6.28
                        << std::endl;
         outputFile.close();
     }
+
+    if (plotOn) {
+        postprocess::ChGnuPlot gplot(out_dir + "/owsec_decay.gpl");
+        gplot.SetGrid();
+        gplot.SetLabelX("time (s)");
+        gplot.SetLabelY("pitch (rad)");
+        gplot.SetTitle("OSWEC decay");
+        gplot.Plot(time_vector, flap_rot, "", " with lines lt rgb '#FF5500' lw 2");
+    }
+
     return 0;
 }
