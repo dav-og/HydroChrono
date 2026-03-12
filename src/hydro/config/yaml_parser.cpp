@@ -353,7 +353,7 @@ YAMLHydroData ReadHydroYAML(const std::string& hydro_file_path) {
             std::string key;
             std::string value;
             bool should_parse = (
-                (!in_bodies && !in_waves && in_hydrodynamics && !in_excitation && !in_radiation && indent == 2) ||
+                (!in_bodies && !in_waves && in_hydrodynamics && !in_excitation && !in_radiation && !in_moordyn && indent == 2) ||
                 (in_excitation && indent == 4) ||
                 (in_radiation && indent == 4) ||
                 (in_radiation_state_space && indent == 6) ||
@@ -361,7 +361,8 @@ YAMLHydroData ReadHydroYAML(const std::string& hydro_file_path) {
                 (in_radiation_taper && indent == 6) ||
                 (in_radiation_diagnostics && indent == 6) ||
                 (in_body && indent == 6) ||
-                (in_waves && (indent == 4 || (in_period_block && indent >= period_block_indent + 2)))
+                (in_waves && (indent == 4 || (in_period_block && indent >= period_block_indent + 2))) ||
+                (in_moordyn && indent == 4)
             );
             if (should_parse && ParseYAMLLine(line, key, value)) {
                 // ─────────────────────────────────────────────────────────────

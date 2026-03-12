@@ -26,6 +26,11 @@
 #include <chrono/physics/ChBody.h>
 #include <chrono/core/ChRealtimeStep.h>
 #include <chrono/core/ChDataPath.h>
+#include <chrono/assets/ChColor.h>
+#include <chrono/assets/ChVisualMaterial.h>
+#include <chrono/assets/ChVisualShapeModelFile.h>
+#include <chrono/assets/ChVisualShapeTriangleMesh.h>
+#include <chrono/geometry/ChTriangleMeshConnected.h>
 
 #include <hydroc/gui/guihelper.h>
 
@@ -258,7 +263,64 @@ std::shared_ptr<chrono::ChSystem> InitializeChronoSystem(const std::string& mode
         hydroc::debug::LogDebug("Populating system");
         parser.Populate(*system);
         hydroc::debug::LogDebug("System populated successfully");
-        
+
+        // Apply per-body diffuse colors from the model YAML.
+        // The YAML parser's model_file path creates ChVisualShapeModelFile
+        // which VSG renders with its own material pipeline, ignoring
+        // SetMaterial(). When a color is specified we reload the OBJ as a
+        // ChTriangleMeshConnected, wrap it in ChVisualShapeTriangleMesh,
+        // set the material, and replace the body's visual.
+        try {
+            auto model_node = model_yaml["model"];
+            if (model_node && model_node["bodies"]) {
+                auto& sys_bodies = system->GetBodies();
+                size_t yaml_idx = 0;
+                for (auto it = model_node["bodies"].begin();
+                     it != model_node["bodies"].end() && yaml_idx < sys_bodies.size();
+                     ++it, ++yaml_idx) {
+                    auto vis_node = (*it)["visualization"];
+                    if (!vis_node || !vis_node["color"]) {
+                        continue;
+                    }
+                    auto c = vis_node["color"];
+                    if (!c.IsSequence() || c.size() < 3) {
+                        continue;
+                    }
+                    float r = c[0].as<float>();
+                    float g = c[1].as<float>();
+                    float b = c[2].as<float>();
+                    auto& body = sys_bodies[yaml_idx];
+                    auto vis = body->GetVisualModel();
+                    if (!vis) {
+                        continue;
+                    }
+                    for (unsigned si = 0; si < vis->GetNumShapes(); ++si) {
+                        auto shape = body->GetVisualShape(si);
+                        auto mf = std::dynamic_pointer_cast<chrono::ChVisualShapeModelFile>(shape);
+                        if (!mf) {
+                            continue;
+                        }
+                        std::string obj_path = mf->GetFilename();
+                        auto trimesh = chrono::ChTriangleMeshConnected::CreateFromWavefrontFile(obj_path, true, false);
+                        if (!trimesh) {
+                            continue;
+                        }
+                        auto tri_shape = chrono_types::make_shared<chrono::ChVisualShapeTriangleMesh>(trimesh, false);
+                        auto mat = chrono_types::make_shared<chrono::ChVisualMaterial>();
+                        mat->SetDiffuseColor(chrono::ChColor(r, g, b));
+                        tri_shape->SetMaterial(0, mat);
+                        body->GetVisualModel()->Clear();
+                        body->AddVisualShape(tri_shape);
+                        break;
+                    }
+                }
+            }
+        } catch (const std::exception& e) {
+            hydroc::debug::LogDebug(std::string("Body color application failed: ") + e.what());
+        } catch (...) {
+            hydroc::debug::LogDebug("Body color application failed (unknown error)");
+        }
+
         return system;
     } catch (const std::exception& e) {
         hydroc::cli::LogError(std::string("Failed to initialize Chrono system: ") + e.what());
@@ -652,6 +714,15 @@ int RunHydroChronoFromYAML(int argc, char* argv[]) {
         } catch (...) {
             hydroc::cli::LogWarning("Wave visualization setup failed (unknown error)");
         }
+
+#ifdef HYDROCHRONO_HAVE_MOORDYN
+        if (hydro_forces && hydro_data.moordyn_enabled && !hydro_data.moordyn_input_file.empty()) {
+            hydroc::debug::LogDebug("⚓ Registering mooring-line visualization provider (MoorDyn enabled)...");
+            ui.SetMooringLineProvider([&hydro_forces]() {
+                return hydro_forces->GetMooringLineStates();
+            });
+        }
+#endif
         // ========== END GUARDED VISUALIZATION SETUP ==========
         
         hydroc::debug::LogDebug("Visualization setup complete");
