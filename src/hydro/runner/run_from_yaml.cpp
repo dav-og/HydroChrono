@@ -811,15 +811,21 @@ int RunHydroChronoFromYAML(int argc, char* argv[]) {
                 exporter->WriteModel(system.get());
                 exporter->BeginResults(system.get(), /*expected_steps*/ 0);
 
-                // If irregular waves are configured, persist spectrum and eta(t) inputs to HDF5
+                // Optionally persist spectrum and eta(t) inputs to HDF5.
+                // This may fail for eta-file import mode where no JONSWAP
+                // spectrum was generated — that is non-fatal.
                 if (hydro_forces) {
                     auto wave_ptr = hydro_forces->GetWave();
                     if (wave_ptr && wave_ptr->GetWaveMode() == WaveMode::irregular) {
-                        auto irreg = std::static_pointer_cast<IrregularWaves>(wave_ptr);
-                        std::vector<double> f = irreg->GetFrequenciesHz();
-                        std::vector<double> S = irreg->GetSpectrum();
-                        auto [tvec, eta] = irreg->ComputeElevationTimeSeries(0.0, duration_hint, loop_dt);
-                        exporter->WriteIrregularInputs(f, S, tvec, eta);
+                        try {
+                            auto irreg = std::static_pointer_cast<IrregularWaves>(wave_ptr);
+                            std::vector<double> f = irreg->GetFrequenciesHz();
+                            std::vector<double> S = irreg->GetSpectrum();
+                            auto [tvec, eta] = irreg->ComputeElevationTimeSeries(0.0, duration_hint, loop_dt);
+                            exporter->WriteIrregularInputs(f, S, tvec, eta);
+                        } catch (const std::exception& e) {
+                            hydroc::debug::LogDebug(std::string("Skipping spectrum HDF5 export: ") + e.what());
+                        }
                     }
                 }
             } catch (const std::exception& e) {
