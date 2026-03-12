@@ -96,6 +96,7 @@ A five-segment articulated attenuator (A5S). Five cylindrical tube sections (4 m
 |------|-------------|---------|
 | `regular_waves` | Regular waves (H = 2 m, T = 10 s) | `.\bin\run_hydrochrono.exe .\demos\a5s\regular_waves` |
 | `irregular_waves` | Irregular JONSWAP waves (Hs = 3 m, Tp = 10 s) | `.\bin\run_hydrochrono.exe .\demos\a5s\irregular_waves` |
+| `mooring` | Irregular waves with MoorDyn spread mooring (3-leg catenary + yaw restraint) | `.\bin\run_hydrochrono.exe .\demos\a5s\mooring` |
 
 
 ## 4) Understanding the YAML inputs

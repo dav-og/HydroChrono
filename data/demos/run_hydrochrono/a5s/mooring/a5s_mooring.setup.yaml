@@ -1,0 +1,5 @@
+model_file: a5s_mooring.model.yaml
+simulation_file: a5s_mooring.simulation.yaml
+hydro_file: a5s_mooring.hydro.yaml
+
+output_directory: outputs

@@ -24,12 +24,14 @@ port, starboard) for a total of 16 dampers.
 
 - **regular_waves** -- Regular waves (H = 2 m, T = 10 s, 120 s duration).
 - **irregular_waves** -- Irregular JONSWAP waves (Hs = 3 m, Tp = 10 s, 600 s duration).
+- **mooring** -- Irregular waves with MoorDyn spread mooring: 3 catenary chain legs from seabed anchors to a tether weight at the bow, plus a yaw restraint from body3 to a rear anchor (50 m water depth, 300 s duration).
 
 ## Run
 
 ```
 bin\run_hydrochrono.exe demos\a5s\regular_waves
 bin\run_hydrochrono.exe demos\a5s\irregular_waves
+bin\run_hydrochrono.exe demos\a5s\mooring
 ```
 
 ## Assets
