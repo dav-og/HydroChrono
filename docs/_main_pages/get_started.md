@@ -88,6 +88,15 @@ A Floating Three-Flap Oscillating Flap device (platform with three independently
 | `decay_dt2` | Pitch decay (flaps locked) | `.\bin\run_hydrochrono.exe .\demos\f3of\decay_dt2` |
 | `decay_dt3` | Flap pitch decay (base locked) | `.\bin\run_hydrochrono.exe .\demos\f3of\decay_dt3` |
 
+### A5S (`demos\a5s\`)
+
+A five-segment articulated attenuator (A5S). Five cylindrical tube sections (4 m diameter, 36 m long) are connected by four universal joints, each fitted with 4 hydraulic ram TSDAs in a cross pattern (top, bottom, port, starboard) providing damping in pitch and yaw.
+
+| Case | Description | Command |
+|------|-------------|---------|
+| `regular_waves` | Regular waves (H = 2 m, T = 10 s) | `.\bin\run_hydrochrono.exe .\demos\a5s\regular_waves` |
+| `irregular_waves` | Irregular JONSWAP waves (Hs = 3 m, Tp = 10 s) | `.\bin\run_hydrochrono.exe .\demos\a5s\irregular_waves` |
+
 
 ## 4) Understanding the YAML inputs
 

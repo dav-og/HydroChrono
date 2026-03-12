@@ -1,0 +1,5 @@
+model_file: a5s_regular.model.yaml
+simulation_file: a5s_regular.simulation.yaml
+hydro_file: a5s_regular.hydro.yaml
+
+output_directory: outputs
