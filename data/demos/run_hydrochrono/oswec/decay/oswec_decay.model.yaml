@@ -21,7 +21,8 @@ model:
         moments: [1850000.0, 1850000.0, 1850000.0]
         products: [0, 0, 0]
       visualization:
-        model_file: ../../assets/oswec_geometry/flap.obj
+        model_file: ../assets/oswec_geometry/flap.obj
+        color: [0.3, 0.1, 0.1]
 
     - name: body2  # Base
       location: [0, 0, -10.15]
@@ -34,7 +35,8 @@ model:
         location: [0, 0, 0]
         orientation: [0, 0, 0]
       visualization:
-        model_file: ../../assets/oswec_geometry/base.obj
+        model_file: ../assets/oswec_geometry/base.obj
+        color: [0.3, 0.1, 0.6]
 
     - name: ground
       location: [0, 0, 0]

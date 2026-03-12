@@ -127,8 +127,9 @@ endif()
 file(COPY ${CMAKE_SOURCE_DIR}/data/ DESTINATION ${HC_BUILD_DATA})
 message(STATUS "  copied to: ${HC_BUILD_DATA}/")
 
-# Install data directory (trailing slash copies contents, not the directory itself)
-install(DIRECTORY ${HC_BUILD_DATA}/ DESTINATION ${HC_INSTALL_DATA})
+# Install only Chrono runtime data (skybox, vsg, textures) into the package.
+# Case-specific data (YAML demos, geometry, hydroData) is installed separately under demos/.
+install(DIRECTORY ${HC_BUILD_DATA}/chrono/ DESTINATION ${HC_INSTALL_DATA}/chrono COMPONENT runtime)
 message(STATUS "  installed to: ${CMAKE_INSTALL_PREFIX}/${HC_INSTALL_DATA}/")
 
 # -- Output Directory Structure --
@@ -872,20 +873,23 @@ if(HYDROCHRONO_ENABLE_MOORDYN)
             DESTINATION licenses COMPONENT runtime)
 endif()
 
-# Public, user-facing regression test suite only
-install(DIRECTORY ${PROJECT_SOURCE_DIR}/tests/regression/run_hydrochrono
-        DESTINATION tests COMPONENT python-tests
-        PATTERN "__pycache__" EXCLUDE
-        PATTERN "*.pyc" EXCLUDE)
-
-# Install test input data (YAML configs, hydro data, geometry) into tests/run_hydrochrono
-# The Python scripts expect test case folders (iea_sphere/, oswec/, rm3/, f3of/) to be siblings
+# Demo case data (YAML configs, geometry, hydroData, expected baselines) -> demos/
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/data/demos/run_hydrochrono/
-        DESTINATION tests/run_hydrochrono COMPONENT python-tests
+        DESTINATION demos COMPONENT runtime
         PATTERN "__pycache__" EXCLUDE
         PATTERN "*.pyc" EXCLUDE)
 
-# Simple runner script to execute tests from the installed tree
+# Test runner scripts only -> tests/
+install(FILES
+    ${PROJECT_SOURCE_DIR}/tests/regression/run_hydrochrono/run_tests.py
+    ${PROJECT_SOURCE_DIR}/tests/regression/run_hydrochrono/run_simulation.py
+    ${PROJECT_SOURCE_DIR}/tests/regression/run_hydrochrono/compare_results.py
+    ${PROJECT_SOURCE_DIR}/tests/regression/run_hydrochrono/compare_template.py
+    ${PROJECT_SOURCE_DIR}/tests/regression/run_hydrochrono/generate_plots.py
+    ${PROJECT_SOURCE_DIR}/tests/regression/run_hydrochrono/requirements.txt
+    ${PROJECT_SOURCE_DIR}/tests/regression/run_hydrochrono/README.md
+    DESTINATION tests COMPONENT python-tests)
+
 install(PROGRAMS ${PROJECT_SOURCE_DIR}/scripts/RUN-TESTS.ps1
         DESTINATION tests COMPONENT python-tests)
 

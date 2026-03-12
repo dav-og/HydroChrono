@@ -20,7 +20,8 @@ model:
         location: [0, 0, 0]
         orientation: [0, 0, 0]
       visualization:
-        model_file: ../../assets/geometry/float_cog.obj
+        model_file: ../assets/geometry/float_cog.obj
+        color: [0.3, 0.1, 0.1]
 
     - name: body2
       location: [0.0, 0.0, -21.29]
@@ -33,7 +34,8 @@ model:
         location: [0, 0, 0]
         orientation: [0, 0, 0]
       visualization:
-        model_file: ../../assets/geometry/plate_cog.obj
+        model_file: ../assets/geometry/plate_cog.obj
+        color: [0.3, 0.1, 0.6]
 
     - name: ground
       location: [0, 0, 0]
