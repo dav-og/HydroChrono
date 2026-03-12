@@ -93,6 +93,8 @@ void IrregularWaves::InitializeIRFVectors() {
 
         use_eta_from_file_ = true;
         spectrum_created_ = false;
+
+        ReconstructSpectrumFromEta();
     } else if (params_.wave_height != 0.0 && params_.wave_period != 0.0) {
         CreateSpectrum();
         PrecomputeExcitationTransfer();
@@ -399,6 +401,53 @@ void IrregularWaves::PrecomputeAmplitudes() {
         // Angular frequency: omega = 2*pi*f
         angular_freqs_[i] = 2.0 * M_PI * spectrum_frequencies_[i];
     }
+}
+
+void IrregularWaves::ReconstructSpectrumFromEta() {
+    // Decompose the imported eta(t) time series into spectral components via a
+    // targeted DFT so that GetElevation() can produce a spatially-varying wave
+    // field for visualization.  Physics (excitation forces) are unaffected —
+    // they still use the raw time series through the use_eta_from_file_ path.
+
+    const Eigen::Index nf = (params_.nfrequencies > 0)
+                               ? static_cast<Eigen::Index>(params_.nfrequencies)
+                               : static_cast<Eigen::Index>(IrregularWaveParams::kDefaultNFrequencies);
+    const double f_min = params_.frequency_min;
+    const double f_max = params_.frequency_max;
+
+    spectrum_frequencies_ = Eigen::VectorXd::LinSpaced(nf, f_min, f_max);
+    spectral_widths_      = GetWidthArray(spectrum_frequencies_);
+
+    const size_t N = free_surface_elevation_sampled_.size();
+    if (N < 2) return;
+
+    const double dt = (free_surface_time_sampled_[N - 1] - free_surface_time_sampled_[0])
+                    / static_cast<double>(N - 1);
+    const double t0 = free_surface_time_sampled_[0];
+
+    amplitudes_.resize(nf);
+    wave_phases_.resize(nf);
+    angular_freqs_.resize(nf);
+
+    for (Eigen::Index i = 0; i < nf; ++i) {
+        const double omega = 2.0 * M_PI * spectrum_frequencies_[i];
+        double re = 0.0, im = 0.0;
+        for (size_t j = 0; j < N; ++j) {
+            const double angle = omega * (t0 + j * dt);
+            re += free_surface_elevation_sampled_[j] * std::cos(angle);
+            im -= free_surface_elevation_sampled_[j] * std::sin(angle);
+        }
+        amplitudes_[i]    = 2.0 * std::sqrt(re * re + im * im) / static_cast<double>(N);
+        angular_freqs_[i] = omega;
+        wave_phases_[i]   = std::atan2(im, re);
+    }
+
+    wavenumbers_ = ComputeWaveNumbers(2.0 * M_PI * spectrum_frequencies_,
+                                      water_depth_, g_);
+
+    hydroc::debug::LogDebug("Reconstructed spectrum from eta file: " +
+                            std::to_string(nf) + " components, f=[" +
+                            std::to_string(f_min) + ", " + std::to_string(f_max) + "] Hz");
 }
 
 void IrregularWaves::PrecomputeExcitationTransfer() {

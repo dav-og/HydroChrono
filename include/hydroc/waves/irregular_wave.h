@@ -128,6 +128,7 @@ class IrregularWaves : public WaveBase {
     void InitializeIRFVectors();
     void PrecomputeAmplitudes();
     void PrecomputeExcitationTransfer();
+    void ReconstructSpectrumFromEta();
     std::vector<double> ReadEtaFromFile();
 
     /// Evaluate the excitation ramp factor at time t (0 -> 1 over ramp_duration).
