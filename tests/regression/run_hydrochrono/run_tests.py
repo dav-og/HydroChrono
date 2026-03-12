@@ -7,12 +7,19 @@ import importlib.util
 import numpy as np
 import os
 
-# Resolve project root for both layouts:
-# - tests/run_hydrochrono/...  => root = parents[2]
-# - tests/regression/run_hydrochrono/... => root = parents[3]
+# Resolve project root and demos directory for both layouts:
+# - Installed: tests/run_tests.py          => ROOT = parents[1], DEMOS = ROOT/demos
+# - Source:    tests/regression/run_hydrochrono/run_tests.py => ROOT = parents[3], DEMOS = ROOT/data/demos/run_hydrochrono
 _here = Path(__file__).resolve()
-ROOT = _here.parents[3] if _here.parents[1].name == "regression" else _here.parents[2]
+_in_source_tree = _here.parents[1].name == "regression"
+if _in_source_tree:
+    ROOT = _here.parents[3]
+    _DEFAULT_DEMOS = ROOT / "data" / "demos" / "run_hydrochrono"
+else:
+    ROOT = _here.parents[1]
+    _DEFAULT_DEMOS = ROOT / "demos"
 THIS = _here.parent
+DEMOS_DIR = _DEFAULT_DEMOS
 
 
 def _resolve_compare_template_dir() -> Path | None:
@@ -71,7 +78,7 @@ def default_exe() -> str:
 
 
 def find_ref(model: str, test_type: str) -> str | None:
-    expected_dir = THIS / model / test_type / "expected"
+    expected_dir = DEMOS_DIR / model / test_type / "expected"
     # Prefer baseline.h5
     h5_base = expected_dir / "baseline.h5"
     if h5_base.exists():
@@ -92,7 +99,7 @@ def find_ref(model: str, test_type: str) -> str | None:
 
 def _find_output_h5(model: str, test_type: str) -> Path | None:
 	"""Locate the simulation output H5 (results.still.h5, results.irregular.h5, etc.)."""
-	outputs_dir = THIS / model / test_type / "outputs"
+	outputs_dir = DEMOS_DIR / model / test_type / "outputs"
 	for p in outputs_dir.glob("results.*.h5"):
 		return p
 	return None
@@ -100,13 +107,13 @@ def _find_output_h5(model: str, test_type: str) -> Path | None:
 
 def run_case(exe: str, model: str, test_type: str, tol: float, update_baseline: bool, quiet: bool, show: bool, gui: bool) -> int:
 	"""Run a single test: simulate, then compare and plot. Returns exit code."""
-	inputs_setup = THIS / model / test_type / "inputs" / f"{model}_{test_type}.setup.yaml"
+	inputs_setup = DEMOS_DIR / model / test_type / f"{model}_{test_type}.setup.yaml"
 	if not inputs_setup.exists():
 		print(f"SKIP | {model}/{test_type} | missing setup {inputs_setup}", file=sys.stderr)
 		return 0
 	# 1) simulate
 	cmd = [
-		"python",
+		sys.executable,
 		str(THIS / "run_simulation.py"),
 		"--exe",
 		exe,
@@ -125,11 +132,11 @@ def run_case(exe: str, model: str, test_type: str, tol: float, update_baseline: 
 	# 2) compare
 	ref = find_ref(model, test_type)
 	outputs_h5_found = _find_output_h5(model, test_type)
-	outputs_h5 = outputs_h5_found.resolve() if outputs_h5_found else (THIS / model / test_type / "outputs" / "results.still.h5").resolve()
-	plots_dir = (THIS / model / test_type / "outputs" / "plots").resolve()
+	outputs_h5 = outputs_h5_found.resolve() if outputs_h5_found else (DEMOS_DIR / model / test_type / "outputs" / "results.still.h5").resolve()
+	plots_dir = (DEMOS_DIR / model / test_type / "outputs" / "plots").resolve()
 	# Neutral/adapter-driven comparison path
 	if outputs_h5.exists():
-		adapter_path = THIS / model / "signal_adapter.py"
+		adapter_path = DEMOS_DIR / model / "signal_adapter.py"
 		if adapter_path.exists():
 			try:
 				spec = importlib.util.spec_from_file_location(f"adapter_{model}", str(adapter_path))
@@ -211,10 +218,10 @@ def run_case(exe: str, model: str, test_type: str, tol: float, update_baseline: 
 	# Default path (legacy adapter mode)
 	# Use explicit simple-mode compare for all other tests too (heave of first body by default)
 	outputs_h5_found = _find_output_h5(model, test_type)
-	outputs_h5 = outputs_h5_found.resolve() if outputs_h5_found else (THIS / model / test_type / "outputs" / "results.still.h5").resolve()
-	plots_dir = (THIS / model / test_type / "outputs" / "plots").resolve()
+	outputs_h5 = outputs_h5_found.resolve() if outputs_h5_found else (DEMOS_DIR / model / test_type / "outputs" / "results.still.h5").resolve()
+	plots_dir = (DEMOS_DIR / model / test_type / "outputs" / "plots").resolve()
 	cmd = [
-		"python",
+		sys.executable,
 		str(THIS / "compare_results.py"),
 		"--ref", ref if ref else str(outputs_h5),
 		"--sim", str(outputs_h5),
@@ -242,6 +249,7 @@ def main() -> int:
 	"""CLI entrypoint for running HydroChrono YAML tests."""
 	parser = argparse.ArgumentParser(description="HydroChrono – test runner")
 	parser.add_argument("--exe", default=default_exe(), help="Path to run_hydrochrono.exe")
+	parser.add_argument("--demos-dir", type=str, default=None, help="Path to demos directory (auto-detected if omitted)")
 	parser.add_argument("--tol", type=float, default=0.02, help="RMS relative error tolerance")
 	parser.add_argument("--update-baseline", action="store_true", help="Overwrite reference with current simulation output")
 	parser.add_argument("--quiet", action="store_true", help="Suppress subprocess logs (summary only)")
@@ -256,10 +264,17 @@ def main() -> int:
 	parser.add_argument("--sphere-irregular-ss", action="store_true", help="Run IEA sphere irregular waves (state-space)")
 	parser.add_argument("--oswec-decay", action="store_true", help="Run OSWEC decay")
 	parser.add_argument("--rm3-decay", action="store_true", help="Run RM3 decay")
+	parser.add_argument("--rm3-mooring", action="store_true", help="Run RM3 mooring (MoorDyn)")
 	parser.add_argument("--f3of-dt1", action="store_true", help="Run F3OF decay test 1 (DT1 surge)")
 	parser.add_argument("--f3of-dt2", action="store_true", help="Run F3OF decay test 2 (DT2 pitch)")
 	parser.add_argument("--f3of-dt3", action="store_true", help="Run F3OF decay test 3 (DT3 flaps pitch)")
 	args = parser.parse_args()
+
+	global DEMOS_DIR
+	if args.demos_dir:
+		DEMOS_DIR = Path(args.demos_dir).resolve()
+	elif os.environ.get("HC_DEMOS_DIR"):
+		DEMOS_DIR = Path(os.environ["HC_DEMOS_DIR"]).resolve()
 
 	selections: list[tuple[str,str]] = []
 	if args.all:
@@ -269,6 +284,7 @@ def main() -> int:
 			("iea_sphere", "irregular_waves_ss"),
 			("oswec", "decay"),
 			("rm3", "decay"),
+			("rm3", "mooring"),
 			("f3of", "decay_dt1"),
 			("f3of", "decay_dt2"),
 			("f3of", "decay_dt3"),
@@ -284,6 +300,8 @@ def main() -> int:
 			selections.append(("oswec", "decay"))
 		if args.rm3_decay:
 			selections.append(("rm3", "decay"))
+		if args.rm3_mooring:
+			selections.append(("rm3", "mooring"))
 		if args.f3of_dt1:
 			selections.append(("f3of", "decay_dt1"))
 		if args.f3of_dt2:
@@ -291,7 +309,7 @@ def main() -> int:
 		if args.f3of_dt3:
 			selections.append(("f3of", "decay_dt3"))
 		if not selections:
-			print("No tests selected. Use --all or one of --sphere-decay/--oswec-decay/--rm3-decay/--f3of-dt1/--f3of-dt2", file=sys.stderr)
+			print("No tests selected. Use --all or one of --sphere-decay/--oswec-decay/--rm3-decay/--rm3-mooring/--f3of-dt1/--f3of-dt2", file=sys.stderr)
 			return 2
 
 	overall = 0

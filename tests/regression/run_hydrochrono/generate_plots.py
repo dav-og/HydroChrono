@@ -31,7 +31,7 @@ def compare_only(model: str, test_type: str, show: bool, quiet: bool) -> int:
 		print(f"SKIP | {model}/{test_type} | missing setup {inputs_setup}", file=sys.stderr)
 		return 0
 	cmd = [
-		"python",
+		sys.executable,
 		str(THIS / "compare_results.py"),
 		"--setup",
 		str(inputs_setup),

@@ -4,12 +4,17 @@ Param([string]$Python = "python", [switch]$NoVenv)
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 # When installed to tests/, install root is one directory up
 $installRoot = Resolve-Path (Join-Path $scriptDir "..")
-$tests = Join-Path $installRoot "tests\run_hydrochrono"
+$tests = Join-Path $installRoot "tests"
+$demos = Join-Path $installRoot "demos"
 $bin   = Join-Path $installRoot "bin"
 $exe   = Join-Path $bin  "run_hydrochrono.exe"
 
 if (!(Test-Path $tests)) {
     Write-Error "Tests not found at $tests"
+    exit 1
+}
+if (!(Test-Path $demos)) {
+    Write-Error "Demos not found at $demos"
     exit 1
 }
 if (!(Test-Path $exe)) {
@@ -50,11 +55,11 @@ if (-not $NoVenv) {
             & $Python -m venv .venv
             if ($LASTEXITCODE) { Pop-Location; $env:PATH = $oldPath; exit $LASTEXITCODE }
         }
-        & .\.venv\Scripts\python -m pip install --upgrade pip
+        & .\.venv\Scripts\python.exe -m pip install --upgrade pip
         if ($reqs.Count -gt 0) {
-            & .\.venv\Scripts\python -m pip install -r .\requirements.txt
+            & .\.venv\Scripts\python.exe -m pip install -r .\requirements.txt
         }
-        $runner = ".\.venv\Scripts\python"
+        $runner = ".\.venv\Scripts\python.exe"
     } else {
         $runner = $Python
     }
@@ -62,9 +67,10 @@ if (-not $NoVenv) {
     $runner = $Python
 }
 
-# Pass explicit exe path; also export for default_exe() fallback
+# Pass explicit exe path and demos directory
 $env:HC_RUN_EXE = $exe
-& $runner .\run_tests.py --all --exe "$exe"
+$env:HC_DEMOS_DIR = $demos
+& $runner .\run_tests.py --all --exe "$exe" --demos-dir "$demos"
 $code = $LASTEXITCODE
 
 Pop-Location
