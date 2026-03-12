@@ -162,6 +162,37 @@ void GUIImplVSG::EnsureWaterSurface() {
         std::cout << "[WaterSurface] EnsureWaterSurface: has_waves=" << has_waves << std::endl;
     }
 
+    // Auto-compute grid extent from body bounding box when no manual extent
+    // has been set via SetWaterGridExtent(). This ensures the free surface
+    // covers the full model regardless of whether the simulation was set up
+    // via YAML or the C++ API.
+    if (viewer_settings_ &&
+        viewer_settings_->grid_width <= 0.0 && viewer_settings_->grid_length <= 0.0) {
+        double xmin = +1e20, xmax = -1e20;
+        double ymin = +1e20, ymax = -1e20;
+        for (const auto& body : system_->GetBodies()) {
+            auto pos = body->GetPos();
+            xmin = std::min(xmin, pos.x());
+            xmax = std::max(xmax, pos.x());
+            ymin = std::min(ymin, pos.y());
+            ymax = std::max(ymax, pos.y());
+        }
+        if (xmax > xmin) {
+            double span_x = xmax - xmin;
+            double span_y = ymax - ymin;
+            double width  = std::max(kWaterGridSize, span_x * 1.5);
+            double length = std::max(kWaterGridSize, span_y * 1.5);
+            viewer_settings_->grid_width    = width;
+            viewer_settings_->grid_length   = length;
+            viewer_settings_->grid_center_x = (xmin + xmax) / 2.0;
+            viewer_settings_->grid_center_y = (ymin + ymax) / 2.0;
+            std::cout << "[WaterSurface] Auto-sized grid: "
+                      << width << " x " << length << " m, center: ("
+                      << viewer_settings_->grid_center_x << ", "
+                      << viewer_settings_->grid_center_y << ")" << std::endl;
+        }
+    }
+
     // Always create animated water surface (supports waves + radiation viz).
     // Static plane fallback removed - animated water handles all cases.
     int resolution = (viewer_settings_) ? viewer_settings_->grid_resolution : 0;
