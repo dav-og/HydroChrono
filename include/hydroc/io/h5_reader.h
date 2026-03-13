@@ -52,6 +52,7 @@ class HydroData {
         double rho = 0.0;
         double g = 0.0;
         double water_depth = 0.0;
+        Eigen::VectorXd wave_directions;  ///< Wave heading angles [rad] from H5 file (may be empty)
     };
     struct RegularWaveInfo {
         Eigen::VectorXd freq_list;

@@ -9,6 +9,7 @@
 #include <hydroc/io/h5_reader.h>
 #include <filesystem>  // std::filesystem::absolute
 #include <hydroc/logging.h>
+#include <hydroc/math_constants.h>  // M_PI (portable)
 
 using namespace chrono;  // TODO narrow this using namespace to specify what we use from chrono or put chrono:: in front
                          // of it all?
@@ -37,6 +38,16 @@ HydroData H5FileInfo::ReadH5Data() {
     InitScalar(userH5File, "simulation_parameters/water_depth", data_to_init.sim_data_.water_depth);
     double rho = data_to_init.sim_data_.rho;
     double g   = data_to_init.sim_data_.g;
+
+    // Wave heading angles (optional -- not all H5 files have multi-heading data).
+    // BEMIO convention stores directions in degrees; convert to radians for
+    // internal use (wave components use radians throughout).
+    try {
+        Init1D(userH5File, "simulation_parameters/wave_dir", data_to_init.sim_data_.wave_directions);
+        data_to_init.sim_data_.wave_directions *= M_PI / 180.0;
+    } catch (const H5::Exception&) {
+        data_to_init.sim_data_.wave_directions.resize(0);
+    }
 
     // for each body things
     for (int i = 0; i < num_bodies_; i++) {
@@ -127,6 +138,12 @@ HydroData H5FileInfo::ReadH5Data() {
         freq_count = data_to_init.reg_wave_data_[0].freq_list.size();
     }
     hydroc::cli::LogInfo(hydroc::cli::CreateAlignedLine("•", "Frequency Count", std::to_string(freq_count)));
+
+    // Wave heading count
+    int heading_count = static_cast<int>(data_to_init.sim_data_.wave_directions.size());
+    if (heading_count > 0) {
+        hydroc::cli::LogInfo(hydroc::cli::CreateAlignedLine("•", "Wave Headings", std::to_string(heading_count)));
+    }
     
     // Check data availability across all bodies
     bool has_irf = true;
