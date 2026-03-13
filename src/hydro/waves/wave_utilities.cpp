@@ -283,7 +283,7 @@ double ComputeWaveNumber(double omega,
     while (error > tolerance && iterations < max_iterations) {
         double tanh_kh = std::tanh(k * water_depth);
         double f       = omega * omega - g * k * tanh_kh;
-        double df      = -2.0 * g * tanh_kh - g * k * water_depth * (1.0 - tanh_kh * tanh_kh);
+        double df      = -g * tanh_kh - g * k * water_depth * (1.0 - tanh_kh * tanh_kh);
 
         if (std::abs(df) < tolerance) {
             LOG_ERROR("Numerical instability: derivative too close to zero (df=" << df << ")");
@@ -362,5 +362,33 @@ Eigen::VectorXd GetWidthArray(const Eigen::VectorXd& input_array) {
         }
     }
     return width_array;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Directional spreading functions
+// ─────────────────────────────────────────────────────────────────────────────
+
+double Cos2sNormalization(double s) {
+    // C_s = Gamma(s+1) / (2*sqrt(pi)*Gamma(s+0.5))
+    //
+    // Guard: tgamma overflows for large s (s > ~170). For very large s the
+    // spreading is effectively a delta function; return the limit analytically.
+    constexpr double kMaxSafeGammaArg = 170.0;
+    if (s + 1.0 > kMaxSafeGammaArg) {
+        return std::sqrt(s / M_PI);  // Stirling approximation for large s
+    }
+    return std::tgamma(s + 1.0) / (2.0 * std::sqrt(M_PI) * std::tgamma(s + 0.5));
+}
+
+double Cos2sSpreading(double theta, double theta_mean, double s) {
+    // Wrap (theta - theta_mean)/2 into [-pi/2, pi/2] using std::remainder
+    // which is exact and O(1) -- no iterative loop that could hang.
+    const double half_diff = std::remainder(0.5 * (theta - theta_mean), M_PI);
+
+    const double cos_val = std::cos(half_diff);
+    if (cos_val <= 0.0) return 0.0;
+
+    const double C_s = Cos2sNormalization(s);
+    return C_s * std::pow(cos_val, 2.0 * s);
 }
 

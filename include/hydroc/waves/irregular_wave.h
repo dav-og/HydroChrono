@@ -78,7 +78,7 @@ class IrregularWaves : public WaveBase {
 
     /// Return the surface slope (∂η/∂x, ∂η/∂y) at a given position and time.
     /// Used for computing surface normals in visualization.
-    Eigen::Vector2d GetElevationGradientXY(const Eigen::Vector3d& position, double time) const;
+    Eigen::Vector2d GetElevationGradientXY(const Eigen::Vector3d& position, double time) const override;
 
     /// Compute elevation using only the first max_components wave components.
     /// Used for faster visualization rendering when full accuracy is not required.

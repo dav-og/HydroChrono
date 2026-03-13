@@ -147,9 +147,39 @@ Eigen::VectorXd JONSWAPSpectrumHz(Eigen::VectorXd& f,
                                   double Hs,
                                   double Tp,
                                   double gamma       = 3.3,
-                                  bool is_normalized = false);
+                                  bool is_normalized = true);
 
 Eigen::VectorXd GetWidthArray(const Eigen::VectorXd& input_array);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Directional spreading functions
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @brief Evaluate the cos-2s directional spreading function D(theta).
+ *
+ * D(theta) = C_s * cos^{2s}((theta - theta_mean) / 2)
+ *
+ * where C_s is the normalization constant ensuring integral over [-pi, pi] = 1.
+ * The convention is that D(theta) is a probability density in direction space:
+ *   integral_{-pi}^{pi} D(theta) d_theta = 1
+ *
+ * @param theta         Direction to evaluate at [rad]
+ * @param theta_mean    Mean spreading direction [rad]
+ * @param s             Spreading parameter (higher = narrower)
+ * @return D(theta) [1/rad]
+ */
+double Cos2sSpreading(double theta, double theta_mean, double s);
+
+/**
+ * @brief Compute the normalization constant C_s for cos-2s spreading.
+ *
+ * C_s = Gamma(s+1) / (2*sqrt(pi)*Gamma(s+0.5))
+ *
+ * @param s  Spreading parameter
+ * @return C_s [1/rad]
+ */
+double Cos2sNormalization(double s);
 
 #endif  // HYDRO_WAVES_WAVE_UTILITIES_H
 

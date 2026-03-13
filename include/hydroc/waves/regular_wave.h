@@ -59,7 +59,7 @@ class RegularWave : public WaveBase {
 
     /// Return the surface slope (∂η/∂x, ∂η/∂y) at a given position and time.
     /// Used for computing surface normals in visualization.
-    Eigen::Vector2d GetElevationGradientXY(const Eigen::Vector3d& position, double time) const;
+    Eigen::Vector2d GetElevationGradientXY(const Eigen::Vector3d& position, double time) const override;
 
   private:
     static constexpr WaveMode mode_ = WaveMode::regular;

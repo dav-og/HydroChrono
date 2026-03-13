@@ -21,9 +21,10 @@ enum class WaveMode {
  * @brief Abstract base class for all wave models.
  *
  * Coordinate conventions:
- *   - Waves propagate in the +X direction (unidirectional).
+ *   - Legacy models (RegularWave, IrregularWaves) propagate in the +X direction.
+ *   - LinearDirectionalWaveField supports arbitrary propagation directions.
  *   - Z is vertical (positive upward), with z = mwl_ at mean water level.
- *   - Y is horizontal, perpendicular to wave propagation.
+ *   - Direction convention: 0 = +X, pi/2 = +Y (counter-clockwise from +X).
  *
  * Units:
  *   - Positions: meters [m]
@@ -48,6 +49,12 @@ class WaveBase {
     virtual double GetElevation(const Eigen::Vector3d& position, double time) const                               = 0;
     virtual Eigen::Vector3d GetVelocity(const Eigen::Vector3d& position, double time, double elevation) const     = 0;
     virtual Eigen::Vector3d GetAcceleration(const Eigen::Vector3d& position, double time, double elevation) const = 0;
+
+    /// Surface slope (∂η/∂x, ∂η/∂y) at a given position and time.
+    /// Default returns (0,0); subclasses with spatial variation override this.
+    virtual Eigen::Vector2d GetElevationGradientXY(const Eigen::Vector3d& /*position*/, double /*time*/) const {
+        return Eigen::Vector2d(0.0, 0.0);
+    }
 
     Eigen::Vector3d GetVelocity(const Eigen::Vector3d& position, double time) const;
     Eigen::Vector3d GetAcceleration(const Eigen::Vector3d& position, double time) const;
