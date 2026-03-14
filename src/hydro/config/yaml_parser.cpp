@@ -181,6 +181,14 @@ YAMLHydroData ReadHydroYAML(const std::string& hydro_file_path) {
     bool period_form_linspace = false;
     bool period_form_range = false;
 
+    // Wave sub-section tracking for spreading/discretization/partitions
+    bool in_waves_spreading = false;
+    bool in_waves_discretization = false;
+    bool in_waves_partitions = false;
+    bool in_waves_partition_item = false;
+    bool in_waves_partition_spreading = false;
+    WavePartitionSettings current_partition;
+
     // Wave convenience fields
     bool waves_amplitude_set = false;
     double waves_amplitude = 0.0;
@@ -344,6 +352,30 @@ YAMLHydroData ReadHydroYAML(const std::string& hydro_file_path) {
             continue;
         }
         
+        // Check for partition list item in waves section (indent = 6, starts with "- ")
+        if (in_waves && in_waves_partitions && indent == 6
+            && trimmed.size() >= 2 && trimmed.substr(0, 2) == "- ") {
+            if (in_waves_partition_item) {
+                data.waves.partitions.push_back(current_partition);
+            }
+            current_partition = WavePartitionSettings();
+            in_waves_partition_item = true;
+            in_waves_partition_spreading = false;
+
+            std::string item_line = trimmed.substr(2);
+            std::string item_key, item_value;
+            if (ParseYAMLLine(item_line, item_key, item_value)) {
+                std::string k = item_key;
+                std::transform(k.begin(), k.end(), k.begin(), ::tolower);
+                if (k == "spectrum") current_partition.spectrum_type = item_value;
+                else if (k == "hs") current_partition.Hs = ParseDouble(item_value, 0.0);
+                else if (k == "tp") current_partition.Tp = ParseDouble(item_value, 0.0);
+                else if (k == "gamma") current_partition.gamma = ParseDouble(item_value, 3.3);
+                else if (k == "direction") current_partition.mean_direction_deg = ParseDouble(item_value, 0.0);
+            }
+            continue;
+        }
+
         // Parse key-value pairs
         // - Global hydrodynamics properties at indent == 2
         // - Body properties at indent == 6
@@ -361,7 +393,7 @@ YAMLHydroData ReadHydroYAML(const std::string& hydro_file_path) {
                 (in_radiation_taper && indent == 6) ||
                 (in_radiation_diagnostics && indent == 6) ||
                 (in_body && indent == 6) ||
-                (in_waves && (indent == 4 || (in_period_block && indent >= period_block_indent + 2))) ||
+                (in_waves && (indent == 4 || (in_period_block && indent >= period_block_indent + 2) || ((in_waves_spreading || in_waves_discretization) && indent == 6) || (in_waves_partition_item && indent == 8) || (in_waves_partition_spreading && indent == 10))) ||
                 (in_moordyn && indent == 4)
             );
             if (should_parse && ParseYAMLLine(line, key, value)) {
@@ -438,7 +470,7 @@ YAMLHydroData ReadHydroYAML(const std::string& hydro_file_path) {
                         try { data.ss_r2_num_samples = std::stoi(value); } catch (...) {}
                     }
                 } else if (!in_bodies && !in_waves && in_hydrodynamics && !in_excitation && !in_radiation && indent == 2) {
-                    // Global hydrodynamics properties at top level (e.g. radiation_method)
+                    // Global hydrodynamics properties at top level
                     if (key == "radiation_method") {
                         data.radiation_method = value;
                     }
@@ -451,12 +483,88 @@ YAMLHydroData ReadHydroYAML(const std::string& hydro_file_path) {
                         current_body.include_excitation = ParseBool(value, true);
                     } else if (key == "include_radiation") {
                         current_body.include_radiation = ParseBool(value, true);
+                    } else if (key == "linear_damping") {
+                        size_t lb = value.find('[');
+                        size_t rb = value.find(']');
+                        if (lb != std::string::npos && rb != std::string::npos && rb > lb) {
+                            std::string inner = value.substr(lb + 1, rb - lb - 1);
+                            std::istringstream iss(inner);
+                            std::string token;
+                            int idx = 0;
+                            while (std::getline(iss, token, ',') && idx < 6) {
+                                token.erase(0, token.find_first_not_of(" \t"));
+                                token.erase(token.find_last_not_of(" \t") + 1);
+                                if (!token.empty()) {
+                                    current_body.linear_damping[idx] = ParseDouble(token, 0.0);
+                                }
+                                ++idx;
+                            }
+                        }
                     }
                 } else if (in_waves) {
                     // Parse wave properties
                     // normalize key for shorthand handling
                     std::string key_lower = key;
                     std::transform(key_lower.begin(), key_lower.end(), key_lower.begin(), ::tolower);
+
+                    // Handle partition spreading sub-properties (indent >= 10)
+                    if (in_waves_partition_spreading && indent >= 10) {
+                        if (key_lower == "type") {
+                            current_partition.spreading.type = value;
+                        } else if (key_lower == "s") {
+                            current_partition.spreading.s = ParseDouble(value, 12.0);
+                        }
+                        continue;
+                    }
+                    // Handle partition item properties (indent >= 8)
+                    if (in_waves_partition_item && indent >= 8) {
+                        if (indent < 10) in_waves_partition_spreading = false;
+                        if (key_lower == "spreading" && value.empty()) {
+                            in_waves_partition_spreading = true;
+                        } else if (key_lower == "spectrum") {
+                            current_partition.spectrum_type = value;
+                        } else if (key_lower == "hs") {
+                            current_partition.Hs = ParseDouble(value, 0.0);
+                        } else if (key_lower == "tp") {
+                            current_partition.Tp = ParseDouble(value, 0.0);
+                        } else if (key_lower == "gamma") {
+                            current_partition.gamma = ParseDouble(value, 3.3);
+                        } else if (key_lower == "direction") {
+                            current_partition.mean_direction_deg = ParseDouble(value, 0.0);
+                        }
+                        continue;
+                    }
+
+                    // Handle wave sub-sections (spreading, discretization)
+                    if (in_waves_spreading && indent >= 6) {
+                        if (key_lower == "type") {
+                            data.waves.spreading.type = value;
+                        } else if (key_lower == "s") {
+                            data.waves.spreading.s = ParseDouble(value, 12.0);
+                        }
+                        continue;
+                    }
+                    if (in_waves_discretization && indent >= 6) {
+                        if (key_lower == "n_omega") {
+                            try { data.waves.discretization.n_omega = std::stoi(value); } catch (...) {}
+                        } else if (key_lower == "n_theta") {
+                            try { data.waves.discretization.n_theta = std::stoi(value); } catch (...) {}
+                        }
+                        continue;
+                    }
+
+                    // Leaving sub-sections when indent drops back to waves level
+                    if (indent <= 4) {
+                        in_waves_spreading = false;
+                        in_waves_discretization = false;
+                        if (in_waves_partition_item) {
+                            data.waves.partitions.push_back(current_partition);
+                            current_partition = WavePartitionSettings();
+                        }
+                        in_waves_partitions = false;
+                        in_waves_partition_item = false;
+                        in_waves_partition_spreading = false;
+                    }
 
                     if (!in_period_block && key_lower == "type") {
                         data.waves.type = value;
@@ -601,6 +709,26 @@ YAMLHydroData ReadHydroYAML(const std::string& hydro_file_path) {
                         data.waves.frequency_max = ParseDouble(value, 0.0);
                     } else if (!in_period_block && key_lower == "nfrequencies") {
                         try { data.waves.nfrequencies = std::stoi(value); } catch (...) { data.waves.nfrequencies = 0; }
+                    } else if (!in_period_block && key_lower == "gamma") {
+                        data.waves.gamma = ParseDouble(value, 3.3);
+                    } else if (!in_period_block && key_lower == "depth") {
+                        data.waves.depth = ParseDouble(value, 0.0);
+                    } else if (!in_period_block && key_lower == "spreading") {
+                        if (value.empty()) {
+                            in_waves_spreading = true;
+                            in_waves_discretization = false;
+                        }
+                    } else if (!in_period_block && key_lower == "discretization") {
+                        if (value.empty()) {
+                            in_waves_discretization = true;
+                            in_waves_spreading = false;
+                        }
+                    } else if (!in_period_block && key_lower == "partitions") {
+                        if (value.empty()) {
+                            in_waves_partitions = true;
+                            in_waves_spreading = false;
+                            in_waves_discretization = false;
+                        }
                     }
                 } else if (in_moordyn) {
                     std::string key_lower = key;
@@ -643,6 +771,11 @@ YAMLHydroData ReadHydroYAML(const std::string& hydro_file_path) {
     // Don't forget to add the last body
     if (in_body && !current_body.name.empty()) {
         data.bodies.push_back(current_body);
+    }
+
+    // Save last partition if still building one
+    if (in_waves_partition_item) {
+        data.waves.partitions.push_back(current_partition);
     }
     
     // Finalize period block validation if it was started

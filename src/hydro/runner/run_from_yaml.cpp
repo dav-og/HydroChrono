@@ -20,6 +20,7 @@
 #include <hydroc/waves/wave_base.h>
 #include <hydroc/waves/regular_wave.h>
 #include <hydroc/waves/irregular_wave.h>
+#include <hydroc/waves/linear_directional_wave_field.h>
 
 #include <chrono_parsers/yaml/ChParserMbsYAML.h>
 #include <chrono/physics/ChSystem.h>
@@ -413,9 +414,9 @@ int RunHydroChronoFromYAML(int argc, char* argv[]) {
         // Parse command line arguments
         for (int i = 1; i < argc; ++i) {
             std::string arg(argv[i]);
-            if (arg == "--model" && i + 1 < argc) {
+            if ((arg == "--model" || arg == "--model_file") && i + 1 < argc) {
                 model_file_arg = argv[++i];
-            } else if (arg == "--sim" && i + 1 < argc) {
+            } else if ((arg == "--sim" || arg == "--sim_file") && i + 1 < argc) {
                 sim_file_arg = argv[++i];
             } else if (arg == "--nogui") {
                 nogui = true;
@@ -589,11 +590,42 @@ int RunHydroChronoFromYAML(int argc, char* argv[]) {
                     }
                     
                     // Display wave information to CLI with enhanced formatting
-                    hydroc::cli::ShowWaveModel(hydro_data.waves.type, 
-                                           hydro_data.waves.height, 
-                                           hydro_data.waves.period,
-                                           hydro_data.waves.direction,
-                                           hydro_data.waves.phase);
+                    if (!hydro_data.waves.partitions.empty() ||
+                        (hydro_data.waves.spreading.type != "none" && !hydro_data.waves.spreading.type.empty())) {
+                        std::vector<hydroc::cli::WavePartitionSummary> summaries;
+                        if (!hydro_data.waves.partitions.empty()) {
+                            for (const auto& p : hydro_data.waves.partitions) {
+                                summaries.push_back({p.spectrum_type, p.Hs, p.Tp,
+                                                     p.mean_direction_deg,
+                                                     p.spreading.type, p.spreading.s});
+                            }
+                        } else {
+                            summaries.push_back({hydro_data.waves.spectrum,
+                                                 hydro_data.waves.height,
+                                                 hydro_data.waves.period,
+                                                 hydro_data.waves.direction,
+                                                 hydro_data.waves.spreading.type,
+                                                 hydro_data.waves.spreading.s});
+                        }
+                        int n_omega = hydro_data.waves.discretization.n_omega > 0
+                                    ? hydro_data.waves.discretization.n_omega : 64;
+                        int n_theta = hydro_data.waves.discretization.n_theta > 0
+                                    ? hydro_data.waves.discretization.n_theta : 1;
+                        int n_comp = 0;
+                        if (hydro_forces && hydro_forces->GetWave()) {
+                            auto dir = std::dynamic_pointer_cast<LinearDirectionalWaveField>(
+                                hydro_forces->GetWave());
+                            if (dir) n_comp = static_cast<int>(dir->GetComponents().size());
+                        }
+                        hydroc::cli::ShowDirectionalWaveModel(
+                            hydro_data.waves.type, summaries, n_comp, n_omega, n_theta);
+                    } else {
+                        hydroc::cli::ShowWaveModel(hydro_data.waves.type,
+                                               hydro_data.waves.height,
+                                               hydro_data.waves.period,
+                                               hydro_data.waves.direction,
+                                               hydro_data.waves.phase);
+                    }
                     
                     // Example warning injection removed (kept in file logs only via interception)
                     
@@ -614,116 +646,72 @@ int RunHydroChronoFromYAML(int argc, char* argv[]) {
         // ---------------------------------------------------------------------
         // 6. Setup visualization (all internal - Debug level)
         // ---------------------------------------------------------------------
-        // ========== TEMPORARY DIAGNOSTIC CODE FOR GUI CRASH DEBUGGING ==========
-        // TODO: Remove this diagnostic block once GUI crash is resolved
-        
-        // Guard visualization setup - can be easily disabled for debugging
-        bool enable_visualization_debug = true;  // TODO: Make this a command line flag
-        
-        hydroc::debug::LogDebug("🔍 PRE-VISUALIZATION: System state check");
-        hydroc::debug::LogDebug(std::string("System fully initialized: ") + (system ? "YES" : "NO"));
-        hydroc::debug::LogDebug(std::string("Bodies in system: ") + std::to_string(system->GetBodies().size()));
-        hydroc::debug::LogDebug(std::string("System time: ") + hydroc::FormatNumber(system->GetChTime(), 6) + " s");
-        
-        // Log body states before visualization setup
-        hydroc::debug::LogDebug("🔍 PRE-VISUALIZATION: Body states");
-        auto pre_vis_bodies = system->GetBodies();
-        for (size_t i = 0; i < pre_vis_bodies.size(); i++) {
-            auto body = pre_vis_bodies[i];
-            std::string body_name = body->GetName();
-            if (body_name.empty()) {
-                body_name = "Body" + std::to_string(i);
-            }
-            
-            auto pos = body->GetPos();
-            auto vel = body->GetPosDt();
-            
-            // Quick NaN/Inf check before visualization
-            bool state_valid = std::isfinite(pos.x()) && std::isfinite(pos.y()) && std::isfinite(pos.z()) &&
-                              std::isfinite(vel.x()) && std::isfinite(vel.y()) && std::isfinite(vel.z());
-            
-            if (!state_valid) {
-                hydroc::cli::LogWarning("⚠️ INVALID BODY STATE detected in " + body_name + " before visualization setup!");
-                enable_visualization_debug = false;  // Disable visualization if invalid state detected
-            }
-            
-            hydroc::debug::LogDebug(std::string("  ") + body_name + " pos: (" + 
-                       hydroc::FormatNumber(pos.x(), 3) + ", " + 
-                       hydroc::FormatNumber(pos.y(), 3) + ", " + 
-                       hydroc::FormatNumber(pos.z(), 3) + ") valid: " + (state_valid ? "YES" : "NO"));
-        }
-        // ========== END TEMPORARY DIAGNOSTIC CODE ==========
-        
         hydroc::debug::LogDebug("Setting up visualization...");
         
-        // ========== GUARDED VISUALIZATION SETUP ==========
-        // TODO: Remove guards once GUI crash is resolved
+        // ========== VISUALIZATION SETUP (with nogui fallback) ==========
         std::shared_ptr<hydroc::gui::UI> pui;
+        bool gui_init_ok = false;
         try {
-            hydroc::debug::LogDebug("🔍 Creating UI object (CreateUI)...");
-            pui = hydroc::gui::CreateUI(!nogui && enable_visualization_debug);
-            hydroc::debug::LogDebug("✅ UI object created successfully");
+            pui = hydroc::gui::CreateUI(!nogui);
         } catch (const std::exception& e) {
-            hydroc::cli::LogError(std::string("🔥 Exception during CreateUI: ") + e.what());
-            hydroc::cli::LogWarning("Disabling visualization due to CreateUI failure");
-            pui = hydroc::gui::CreateUI(true);  // Force nogui mode
+            hydroc::cli::LogError(std::string("CreateUI failed: ") + e.what());
         } catch (...) {
-            hydroc::cli::LogError("🔥 Unknown exception during CreateUI");
-            hydroc::cli::LogWarning("Disabling visualization due to CreateUI failure");
-            pui = hydroc::gui::CreateUI(true);  // Force nogui mode
+            hydroc::cli::LogError("CreateUI failed (unknown error)");
         }
-        
+
+        if (pui && !nogui) {
+            try {
+                pui->Init(system.get(), "HydroChrono YAML");
+                gui_init_ok = true;
+            } catch (const std::exception& e) {
+                hydroc::cli::LogError(std::string("VSG/GUI initialization failed: ") + e.what());
+                pui.reset();
+            } catch (...) {
+                hydroc::cli::LogError("VSG/GUI initialization failed (unknown error)");
+                pui.reset();
+            }
+        }
+
+        if (!pui) {
+            if (!nogui) {
+                hydroc::cli::LogWarning(
+                    "Falling back to headless (nogui) mode. "
+                    "If this keeps happening, try running with --nogui.");
+                nogui = true;
+            }
+            pui = hydroc::gui::CreateUI(true);
+            pui->Init(system.get(), "HydroChrono");
+        }
+
         hydroc::gui::UI& ui = *pui;
 
-        try {
-            hydroc::debug::LogDebug("🔍 Initializing UI with system...");
-            ui.Init(system.get(), "HydroChrono YAML");
-            hydroc::debug::LogDebug("✅ UI initialized successfully");
-        } catch (const std::exception& e) {
-            hydroc::cli::LogError(std::string("🔥 Exception during UI.Init: ") + e.what());
-            hydroc::cli::LogWarning("UI initialization failed, continuing with limited functionality");
-        } catch (...) {
-            hydroc::cli::LogError("🔥 Unknown exception during UI.Init");
-            hydroc::cli::LogWarning("UI initialization failed, continuing with limited functionality");
-        }
-        
-        try {
-            hydroc::debug::LogDebug("🔍 Setting camera position...");
-            ui.SetCamera(0, -50, -10, 0, 0, -10);
-            hydroc::debug::LogDebug("✅ Camera set successfully");
-        } catch (const std::exception& e) {
-            hydroc::cli::LogError(std::string("🔥 Exception during SetCamera: ") + e.what());
-            hydroc::cli::LogWarning("Camera setup failed, using default position");
-        } catch (...) {
-            hydroc::cli::LogError("🔥 Unknown exception during SetCamera");
-            hydroc::cli::LogWarning("Camera setup failed, using default position");
-        }
-
-        // Set wave model for animated free-surface rendering.
-        try {
-            if (hydro_forces) {
-                auto wave_ptr = hydro_forces->GetWave();
-                if (wave_ptr) {
-                    hydroc::debug::LogDebug("🌊 Setting wave model for animated surface...");
-                    ui.SetWaveModel(wave_ptr);
-                    hydroc::debug::LogDebug("✅ Wave model set successfully");
-                }
+        if (gui_init_ok) {
+            try {
+                ui.SetCamera(0, -50, -10, 0, 0, -10);
+            } catch (const std::exception& e) {
+                hydroc::cli::LogWarning(std::string("Camera setup failed: ") + e.what());
             }
-        } catch (const std::exception& e) {
-            hydroc::cli::LogWarning(std::string("Wave visualization setup failed: ") + e.what());
-        } catch (...) {
-            hydroc::cli::LogWarning("Wave visualization setup failed (unknown error)");
-        }
+
+            try {
+                if (hydro_forces) {
+                    auto wave_ptr = hydro_forces->GetWave();
+                    if (wave_ptr) {
+                        ui.SetWaveModel(wave_ptr);
+                    }
+                }
+            } catch (const std::exception& e) {
+                hydroc::cli::LogWarning(std::string("Wave visualization setup failed: ") + e.what());
+            }
 
 #ifdef HYDROCHRONO_HAVE_MOORDYN
-        if (hydro_forces && hydro_data.moordyn_enabled && !hydro_data.moordyn_input_file.empty()) {
-            hydroc::debug::LogDebug("⚓ Registering mooring-line visualization provider (MoorDyn enabled)...");
-            ui.SetMooringLineProvider([&hydro_forces]() {
-                return hydro_forces->GetMooringLineStates();
-            });
-        }
+            if (hydro_forces && hydro_data.moordyn_enabled && !hydro_data.moordyn_input_file.empty()) {
+                ui.SetMooringLineProvider([&hydro_forces]() {
+                    return hydro_forces->GetMooringLineStates();
+                });
+            }
 #endif
-        // ========== END GUARDED VISUALIZATION SETUP ==========
+        }
+        // ========== END VISUALIZATION SETUP ==========
         
         hydroc::debug::LogDebug("Visualization setup complete");
 
@@ -818,11 +806,13 @@ int RunHydroChronoFromYAML(int argc, char* argv[]) {
                     auto wave_ptr = hydro_forces->GetWave();
                     if (wave_ptr && wave_ptr->GetWaveMode() == WaveMode::irregular) {
                         try {
-                            auto irreg = std::static_pointer_cast<IrregularWaves>(wave_ptr);
-                            std::vector<double> f = irreg->GetFrequenciesHz();
-                            std::vector<double> S = irreg->GetSpectrum();
-                            auto [tvec, eta] = irreg->ComputeElevationTimeSeries(0.0, duration_hint, loop_dt);
-                            exporter->WriteIrregularInputs(f, S, tvec, eta);
+                            auto irreg = std::dynamic_pointer_cast<IrregularWaves>(wave_ptr);
+                            if (irreg) {
+                                std::vector<double> f = irreg->GetFrequenciesHz();
+                                std::vector<double> S = irreg->GetSpectrum();
+                                auto [tvec, eta] = irreg->ComputeElevationTimeSeries(0.0, duration_hint, loop_dt);
+                                exporter->WriteIrregularInputs(f, S, tvec, eta);
+                            }
                         } catch (const std::exception& e) {
                             hydroc::debug::LogDebug(std::string("Skipping spectrum HDF5 export: ") + e.what());
                         }
@@ -894,6 +884,12 @@ int RunHydroChronoFromYAML(int argc, char* argv[]) {
                         last_progress_step = static_cast<size_t>(step_count);
                     }
                     previous_time = current_time;
+
+                    if (hydro_forces && hydro_forces->HasDiverged()) {
+                        hydroc::cli::StopProgress();
+                        hydroc::cli::LogError("Simulation diverged — terminating. See above for details.");
+                        break;
+                    }
                 } catch (const std::exception& e) {
                     hydroc::cli::StopProgress();
                     hydroc::cli::LogError(std::string("🔥 Exception during DoStepDynamics at step ") + std::to_string(step_count) + ": " + e.what());
@@ -914,7 +910,15 @@ int RunHydroChronoFromYAML(int argc, char* argv[]) {
                 hydroc::cli::StopProgress();
             }
         } else {
-            // GUI-driven loop: respects pause via ui.simulationStarted and closes when window stops
+            // GUI-driven loop.  Physics and rendering share a single thread:
+            //   1. ui.IsRunning() → polls window events, processes ImGui, renders
+            //   2. system->DoStepDynamics() → advances physics (can be >50 ms for
+            //      constrained multi-body systems)
+            // When the physics step is slow, input events queue up and ImGui may
+            // feel unresponsive.  Decoupling physics into a worker thread is the
+            // proper fix but requires thread-safe access to ChSystem.  For now
+            // this is a known limitation.
+            hydroc::cli::LogInfo("Tip: if the GUI becomes unresponsive, try --nogui for headless mode.");
             while (ui.IsRunning(loop_dt)) {
                 // Enforce YAML-configured end_time even in GUI mode
                 if (yaml_end_time > 0.0 && system->GetChTime() >= yaml_end_time) {
@@ -994,67 +998,6 @@ int RunHydroChronoFromYAML(int argc, char* argv[]) {
                             }
                         }
                         
-                        // ========== TEMPORARY DIAGNOSTIC CODE FOR GUI CRASH DEBUGGING ==========
-                        // TODO: Remove this diagnostic block once GUI crash is resolved
-                        hydroc::debug::LogDebug("🔍 POST-FIRST-STEP: Logging all body states for GUI crash debugging");
-                        
-                        // Log position and velocity of each Chrono body
-                        auto bodies = system->GetBodies();
-                        for (size_t i = 0; i < bodies.size(); i++) {
-                            auto body = bodies[i];
-                            std::string body_name = body->GetName();
-                            if (body_name.empty()) {
-                                body_name = "Body" + std::to_string(i);
-                            }
-                            
-                            auto pos = body->GetPos();
-                            auto vel = body->GetPosDt();
-                            auto ang_vel = body->GetAngVelParent();
-                            
-                            // Check for NaN/Inf in body state
-                            bool has_invalid_state = false;
-                            std::string invalid_components;
-                            
-                            if (!std::isfinite(pos.x()) || !std::isfinite(pos.y()) || !std::isfinite(pos.z())) {
-                                has_invalid_state = true;
-                                invalid_components += "position ";
-                            }
-                            if (!std::isfinite(vel.x()) || !std::isfinite(vel.y()) || !std::isfinite(vel.z())) {
-                                has_invalid_state = true;
-                                invalid_components += "velocity ";
-                            }
-                            double ang_vel_x = ang_vel.x();
-                            double ang_vel_y = ang_vel.y(); 
-                            double ang_vel_z = ang_vel.z();
-                            if (!std::isfinite(ang_vel_x) || !std::isfinite(ang_vel_y) || !std::isfinite(ang_vel_z)) {
-                                has_invalid_state = true;
-                                invalid_components += "angular_velocity ";
-                            }
-                            
-                            if (has_invalid_state) {
-                                hydroc::cli::LogWarning("⚠️ INVALID BODY STATE DETECTED in " + body_name + ": " + invalid_components);
-                                hydroc::cli::LogWarning("  Position: (" + std::to_string(pos.x()) + ", " + std::to_string(pos.y()) + ", " + std::to_string(pos.z()) + ")");
-                                hydroc::cli::LogWarning("  Velocity: (" + std::to_string(vel.x()) + ", " + std::to_string(vel.y()) + ", " + std::to_string(vel.z()) + ")");
-                                hydroc::cli::LogWarning("  Angular Vel: (" + std::to_string(ang_vel_x) + ", " + std::to_string(ang_vel_y) + ", " + std::to_string(ang_vel_z) + ")");
-                            } else {
-                                hydroc::debug::LogDebug(std::string("✅ ") + body_name + " state valid:");
-                                hydroc::debug::LogDebug(std::string("  Position: (") + 
-                                          hydroc::FormatNumber(pos.x(), 6) + ", " + 
-                                          hydroc::FormatNumber(pos.y(), 6) + ", " + 
-                                          hydroc::FormatNumber(pos.z(), 6) + ")");
-                                hydroc::debug::LogDebug(std::string("  Velocity: (") + 
-                                          hydroc::FormatNumber(vel.x(), 6) + ", " + 
-                                          hydroc::FormatNumber(vel.y(), 6) + ", " + 
-                                          hydroc::FormatNumber(vel.z(), 6) + ")");
-                                hydroc::debug::LogDebug(std::string("  Angular Vel: (") + 
-                                          hydroc::FormatNumber(ang_vel_x, 6) + ", " + 
-                                          hydroc::FormatNumber(ang_vel_y, 6) + ", " + 
-                                          hydroc::FormatNumber(ang_vel_z, 6) + ")");
-                            }
-                        }
-                        hydroc::debug::LogDebug("🔍 END POST-FIRST-STEP DIAGNOSTICS");
-                        // ========== END TEMPORARY DIAGNOSTIC CODE ==========
-                        
                         first_step = false;
                     }
                     
@@ -1068,6 +1011,11 @@ int RunHydroChronoFromYAML(int argc, char* argv[]) {
                     }
                     
                     previous_time = current_time;
+
+                    if (hydro_forces && hydro_forces->HasDiverged()) {
+                        hydroc::cli::LogError("Simulation diverged — terminating. See above for details.");
+                        break;
+                    }
                     
                 } catch (const std::exception& e) {
                     // Enhanced exception handling with more diagnostics

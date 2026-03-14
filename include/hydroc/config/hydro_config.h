@@ -24,8 +24,35 @@ struct HydroBody {
     std::string h5_file = "";
     bool include_excitation = true;
     bool include_radiation = true;
-    // TODO: Add nonlinear buoyancy fields
-    // TODO: Add drag coefficient fields
+    std::array<double, 6> linear_damping = {0, 0, 0, 0, 0, 0};  ///< Per-DOF [surge, sway, heave, roll, pitch, yaw]
+};
+
+/**
+ * @brief Configuration for directional spreading.
+ */
+struct WaveSpreadingSettings {
+    std::string type = "none";        ///< "none" (long-crested) or "cos2s"
+    double s = 12.0;                  ///< Spreading parameter for cos2s
+};
+
+/**
+ * @brief Configuration for a spectral partition in a multi-modal sea state.
+ */
+struct WavePartitionSettings {
+    std::string spectrum_type = "jonswap";
+    double Hs    = 0.0;
+    double Tp    = 0.0;
+    double gamma = 3.3;
+    double mean_direction_deg = 0.0;
+    WaveSpreadingSettings spreading;
+};
+
+/**
+ * @brief Discretization settings for the component sampler.
+ */
+struct WaveDiscretizationSettings {
+    int n_omega = 0;  ///< Number of frequency bins (0 = use default)
+    int n_theta = 0;  ///< Number of directional bins (0 or 1 = long-crested)
 };
 
 /**
@@ -49,7 +76,13 @@ struct WaveSettings {
     double frequency_min  = 0.0;   // 0 = use IrregularWaveParams::kDefaultFreqMin
     double frequency_max  = 0.0;   // 0 = use IrregularWaveParams::kDefaultFreqMax
     int    nfrequencies   = 0;     // 0 = use IrregularWaveParams::kDefaultNFrequencies
-    // TODO: Add spectrum parameters (peak enhancement factor, etc.)
+
+    // --- Directional wave extensions ---
+    WaveSpreadingSettings spreading;           ///< Directional spreading (if type != "none")
+    WaveDiscretizationSettings discretization; ///< Component sampling resolution
+    std::vector<WavePartitionSettings> partitions; ///< For bimodal/multi-modal sea states
+    double gamma = 3.3;  ///< JONSWAP peak enhancement factor (single-partition shorthand)
+    double depth = 0.0;  ///< Water depth [m]; 0 = deep water (overridden by H5 if not set)
 };
 
 /**

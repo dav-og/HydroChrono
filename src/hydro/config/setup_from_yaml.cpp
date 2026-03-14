@@ -15,10 +15,15 @@
 #include <hydroc/waves/wave_base.h>
 #include <hydroc/waves/regular_wave.h>
 #include <hydroc/waves/irregular_wave.h>
+#include <hydroc/waves/linear_directional_wave_field.h>
+#include <hydroc/waves/component_sampler.h>
+#include <hydroc/waves/wave_component.h>
+#include <hydroc/math_constants.h>
 #include <hydroc/logging.h>
 #include <hydroc/radiation/radiation_types.h>
 #include <filesystem>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <unordered_map>
 
@@ -29,8 +34,83 @@ namespace {
 // ------------------------------------------------------------
 // SECTION: Wave model factory
 // ------------------------------------------------------------
-// Creates appropriate WaveBase implementation from YAML settings.
-// TODO: Extract to dedicated wave factory module in future refactor.
+
+/// True if the YAML configuration uses directional/spreading features
+/// that require the new LinearDirectionalWaveField path.
+bool UsesDirectionalWavePath(const WaveSettings& ws) {
+    std::string spread_type = ws.spreading.type;
+    std::transform(spread_type.begin(), spread_type.end(), spread_type.begin(), ::tolower);
+    if (spread_type != "none" && !spread_type.empty()) return true;
+    if (!ws.partitions.empty()) return true;
+    if (ws.discretization.n_theta > 1) return true;
+    // Non-zero direction with the regular or irregular type also routes here
+    // so that the user can specify direction: 30 on a regular wave and get it.
+    if (std::abs(ws.direction) > 1e-6) return true;
+    return false;
+}
+
+/// Build a SeaStateDefinition from the YAML WaveSettings.
+SeaStateDefinition BuildSeaStateDefinition(const WaveSettings& ws) {
+    SeaStateDefinition def;
+    def.type  = ws.type;
+    def.seed  = (ws.seed > 0) ? ws.seed : 42;
+    def.depth = ws.depth;
+    def.g     = 9.81;
+
+    std::string type_lower = ws.type;
+    std::transform(type_lower.begin(), type_lower.end(), type_lower.begin(), ::tolower);
+
+    if (type_lower == "regular") {
+        def.amplitude     = ws.height / 2.0;
+        def.omega         = (ws.period > 0.0) ? (2.0 * M_PI / ws.period) : 0.0;
+        def.direction_deg = ws.direction;
+        def.phase_rad     = ws.phase;
+        return def;
+    }
+
+    // Irregular: build partition(s).
+    if (!ws.partitions.empty()) {
+        // Explicit multi-partition (bimodal) config.
+        for (const auto& p : ws.partitions) {
+            SeaStatePartition sp;
+            sp.spectrum.type = p.spectrum_type;
+            sp.spectrum.Hs   = p.Hs;
+            sp.spectrum.Tp   = p.Tp;
+            sp.spectrum.gamma = p.gamma;
+            sp.spreading.type = p.spreading.type;
+            sp.spreading.mean_direction_deg = p.mean_direction_deg;
+            sp.spreading.s = p.spreading.s;
+            def.partitions.push_back(sp);
+        }
+    } else {
+        // Single-partition shorthand (the common case).
+        SeaStatePartition sp;
+        sp.spectrum.Hs = ws.height;
+        sp.spectrum.Tp = ws.period;
+        sp.spectrum.gamma = ws.gamma;
+
+        std::string spec_type = ws.spectrum;
+        std::transform(spec_type.begin(), spec_type.end(), spec_type.begin(), ::tolower);
+        sp.spectrum.type = spec_type;
+
+        sp.spreading.type = ws.spreading.type;
+        sp.spreading.mean_direction_deg = ws.direction;
+        sp.spreading.s = ws.spreading.s;
+
+        def.partitions.push_back(sp);
+    }
+
+    // Discretization.
+    def.n_omega = (ws.discretization.n_omega > 0) ? ws.discretization.n_omega
+                : (ws.nfrequencies > 0 ? ws.nfrequencies : 64);
+    def.n_theta = (ws.discretization.n_theta > 0) ? ws.discretization.n_theta : 1;
+
+    // Frequency limits (convert Hz to rad/s if specified).
+    if (ws.frequency_min > 0.0) def.omega_min = 2.0 * M_PI * ws.frequency_min;
+    if (ws.frequency_max > 0.0) def.omega_max = 2.0 * M_PI * ws.frequency_max;
+
+    return def;
+}
 
 /**
  * @brief Create a wave object from wave settings.
@@ -43,6 +123,29 @@ std::shared_ptr<WaveBase> CreateWaveFromSettings(const WaveSettings& wave_settin
     std::string type = wave_settings.type;
     std::transform(type.begin(), type.end(), type.begin(), ::tolower);
 
+    // ── Directional / component-based path ────────────────────────────────
+    if (UsesDirectionalWavePath(wave_settings)) {
+        SeaStateDefinition def = BuildSeaStateDefinition(wave_settings);
+        auto components = ComponentSampler::Build(def);
+
+        auto wave_field = std::make_shared<LinearDirectionalWaveField>(
+            std::move(components), def.depth);
+
+        double effective_ramp = (wave_settings.ramp_duration > 0.0)
+                                ? wave_settings.ramp_duration
+                                : ramp_duration;
+        wave_field->SetRampDuration(effective_ramp);
+
+        int n_comp = static_cast<int>(wave_field->GetComponents().size());
+        hydroc::debug::LogDebug(
+            std::string("Attached wave model: LinearDirectionalWaveField, ") +
+            std::to_string(n_comp) + " components, dir=" +
+            std::to_string(wave_settings.direction) + " deg");
+
+        return wave_field;
+    }
+
+    // ── Legacy paths (unchanged behavior for non-directional configs) ─────
     if (type == "regular") {
         auto regular_wave = std::make_shared<RegularWave>();
         regular_wave->SetAmplitude(wave_settings.height / 2.0);
@@ -282,6 +385,41 @@ std::unique_ptr<HydroSystem> SetupHydroFromYAML(
             "HYDROCHRONO_ENABLE_MOORDYN. Mooring forces will be ignored.");
     }
 #endif
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Per-body linear damping
+    // ─────────────────────────────────────────────────────────────────────────
+    {
+        std::vector<std::array<double, 6>> per_body_damping;
+        per_body_damping.reserve(hydro_data.bodies.size());
+        bool has_any = false;
+        for (const auto& body : hydro_data.bodies) {
+            per_body_damping.push_back(body.linear_damping);
+            for (double c : body.linear_damping) {
+                if (c != 0.0) { has_any = true; break; }
+            }
+        }
+        if (has_any) {
+            hydro_system->SetLinearDamping(per_body_damping);
+            for (size_t bi = 0; bi < hydro_data.bodies.size(); ++bi) {
+                bool body_has = false;
+                for (double c : hydro_data.bodies[bi].linear_damping) {
+                    if (c != 0.0) { body_has = true; break; }
+                }
+                if (body_has) {
+                    std::ostringstream oss;
+                    oss << "[";
+                    for (int i = 0; i < 6; ++i) {
+                        if (i > 0) oss << ", ";
+                        oss << hydro_data.bodies[bi].linear_damping[i];
+                    }
+                    oss << "]";
+                    hydroc::cli::LogInfo(hydroc::cli::CreateAlignedLine(
+                        "+", "Linear Damping (" + hydro_data.bodies[bi].name + ")", oss.str()));
+                }
+            }
+        }
+    }
 
     return hydro_system;
 }

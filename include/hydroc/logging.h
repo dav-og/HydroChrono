@@ -190,6 +190,21 @@ void ShowSectionBox(const std::string& title,
 void ShowWaveModel(const std::string& wave_type, double height,
                    double period, double direction = 0.0, double phase = 0.0);
 
+struct WavePartitionSummary {
+    std::string spectrum_type;
+    double Hs;
+    double Tp;
+    double direction_deg;
+    std::string spreading_type;
+    double spreading_s;
+};
+
+void ShowDirectionalWaveModel(const std::string& wave_type,
+                              const std::vector<WavePartitionSummary>& partitions,
+                              int n_components,
+                              int n_omega,
+                              int n_theta);
+
 /**
  * @brief Display simulation completion results
  * @param final_time Final simulation time in seconds

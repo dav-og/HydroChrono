@@ -113,6 +113,9 @@ public:
      */
     void ShowSectionBox(const std::string& title, const std::vector<std::string>& content_lines, LogColor content_color = LogColor::BrightCyan);
     void ShowWaveModel(const std::string& wave_type, double height, double period, double direction = 0.0, double phase = 0.0);
+    void ShowDirectionalWaveModel(const std::string& wave_type,
+                                  const std::vector<cli::WavePartitionSummary>& partitions,
+                                  int n_components, int n_omega, int n_theta);
     void ShowSimulationResults(double final_time, int steps, double wall_time);
     /**
      * @brief Show a concise path to the active log file (if enabled).
@@ -336,7 +339,31 @@ void CLILogger::ShowWaveModel(const std::string& wave_type, double height, doubl
     Log(LogLevel::Success, CreateAlignedLine("•", "Height", height_str), LogColor::White);
     Log(LogLevel::Success, CreateAlignedLine("•", "Period", period_str), LogColor::White);
     if (direction != 0.0) Log(LogLevel::Success, CreateAlignedLine("•", "Direction", FormatNumber(direction, 1) + "°"), LogColor::White);
-    if (phase != 0.0) Log(LogLevel::Success, CreateAlignedLine("•", "Phase", FormatNumber(phase, 1) + "°"), LogColor::White);
+    if (phase != 0.0) {
+        const double phase_deg = phase * 180.0 / 3.14159265358979323846;
+        Log(LogLevel::Success, CreateAlignedLine("•", "Phase", FormatNumber(phase_deg, 1) + "°"), LogColor::White);
+    }
+    ShowEmptyLine();
+}
+
+void CLILogger::ShowDirectionalWaveModel(const std::string& wave_type,
+                                         const std::vector<cli::WavePartitionSummary>& partitions,
+                                         int n_components, int n_omega, int n_theta) {
+    ShowEmptyLine();
+    ShowHeader("🌊 Wave Model");
+    Log(LogLevel::Success, CreateAlignedLine("•", "Type", wave_type), LogColor::White);
+    Log(LogLevel::Success, CreateAlignedLine("•", "Components", std::to_string(n_components)), LogColor::White);
+    Log(LogLevel::Success, CreateAlignedLine("•", "Grid", std::to_string(n_omega) + " freq x " + std::to_string(n_theta) + " dir"), LogColor::White);
+    for (size_t i = 0; i < partitions.size(); ++i) {
+        const auto& p = partitions[i];
+        std::string label = "Partition " + std::to_string(i + 1);
+        std::string info = "Hs=" + FormatNumber(p.Hs, 2) + "m  Tp=" + FormatNumber(p.Tp, 1) +
+                           "s  dir=" + FormatNumber(p.direction_deg, 0) + "°";
+        if (p.spreading_type != "none" && !p.spreading_type.empty()) {
+            info += "  " + p.spreading_type + "(s=" + FormatNumber(p.spreading_s, 0) + ")";
+        }
+        Log(LogLevel::Success, CreateAlignedLine("•", label, info), LogColor::White);
+    }
     ShowEmptyLine();
 }
 
@@ -687,6 +714,15 @@ void ShowWaveModel(const std::string& wave_type, double height,
     auto logger = GetCLILogger();
     if (logger) {
         logger->ShowWaveModel(wave_type, height, period, direction, phase);
+    }
+}
+
+void ShowDirectionalWaveModel(const std::string& wave_type,
+                              const std::vector<WavePartitionSummary>& partitions,
+                              int n_components, int n_omega, int n_theta) {
+    auto logger = GetCLILogger();
+    if (logger) {
+        logger->ShowDirectionalWaveModel(wave_type, partitions, n_components, n_omega, n_theta);
     }
 }
 
