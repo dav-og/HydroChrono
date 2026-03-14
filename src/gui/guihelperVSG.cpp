@@ -20,6 +20,7 @@
 
 #include <iostream>
 #include <memory>
+#include <stdexcept>
 
 #include <chrono/core/ChTypes.h>
 
@@ -39,43 +40,49 @@ GUIImplVSG::GUIImplVSG()
 
 GUIImplVSG::~GUIImplVSG() = default;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Init sequence (must be single-threaded, called after Chrono system is fully
+// populated with bodies, joints, and visual assets):
+//   1. AttachSystem  — registers body list with the viewer
+//   2. Window / camera / light setup — all pre-Initialize configuration
+//   3. EnableSkyTexture — loads cubemap from CHRONO_DATA_DIR (can fail if
+//      the data path is missing; non-fatal but produces blank sky)
+//   4. Apply materials — iterates system bodies (must exist already)
+//   5. AddGuiComponent — registers ImGui overlay
+//   6. pVis->Initialize() — creates Vulkan device, swap chain, compiles
+//      shaders, builds scene graph.
+//   7. AddFillLight — requires scene graph from step 6
+// ─────────────────────────────────────────────────────────────────────────────
 void GUIImplVSG::Init(UI& ui, chrono::ChSystem* system, const char* title) {
-    system_ = system;  // Cache for time access.
+    system_ = system;
 
+    std::cerr << "[VSG] Stage 1: AttachSystem" << std::endl;
     pVis->AttachSystem(system);
 
     pVis->SetWindowTitle(title);
     pVis->SetWindowSize(1280, 720);
     pVis->SetWindowPosition(100, 100);
 
-    // Deterministic side-on camera: eye on -Y axis, slightly above, looking at origin.
     const chrono::ChVector3d eye(0.0, -kCameraDistance, kCameraHeight);
     const chrono::ChVector3d target(0.0, 0.0, -10.0);
     pVis->AddCamera(eye, target);
-    pVis->SetCameraVertical(chrono::CameraVerticalDir::Z);  // Enforce Z-up (no roll)
+    pVis->SetCameraVertical(chrono::CameraVerticalDir::Z);
     pVis->SetCameraAngleDeg(40.0);
 
-    // Key light (main directional) — set before Initialize().
     pVis->SetLightIntensity(kKeyIntensity);
     pVis->SetLightDirection(kKeyAzimuth, kKeyElevation);
 
-    // Shadows OFF: Chrono/VSG lacks per-object shadow control. The water plane
-    // would cast/receive shadows that flatten craft lighting.
-    // pVis->EnableShadows();
-
-    // Skybox provides sky/horizon context, contrasting with dark water plane.
-    pVis->EnableSkyTexture(chrono::SkyMode::BOX);
-
-    // Grid disabled: water plane provides the marine context instead.
-    // (Keeping this comment for easy re-enable if needed later.)
+    std::cerr << "[VSG] Stage 2: EnableSkyTexture" << std::endl;
+    try {
+        pVis->EnableSkyTexture(chrono::SkyMode::BOX);
+    } catch (const std::exception& e) {
+        std::cerr << "[VSG] WARNING: Skybox texture load failed: " << e.what()
+                  << " (continuing without skybox)" << std::endl;
+    } catch (...) {
+        std::cerr << "[VSG] WARNING: Skybox texture load failed (unknown error)" << std::endl;
+    }
 
     if (system) {
-        // Water surface will be added when SetWaveModel is called, or a static
-        // plane will be added if no wave model is set before first render.
-        // For now, defer water surface creation.
-
-        // Apply painted-metal material variants to all existing bodies.
-        // Each body gets a subtle color variation for visual distinction.
         int body_index = 0;
         for (auto& body : system->GetBodies()) {
             if (body && body->GetName() != "water_surface" &&
@@ -84,7 +91,6 @@ void GUIImplVSG::Init(UI& ui, chrono::ChSystem* system, const char* title) {
                 ApplyMaterialToAllVisualShapes(*body, material);
                 ++body_index;
 
-                // Enable wireframe overlay for improved shape readability (CAD-style).
                 if (kEnableWireframe) {
                     auto model = body->GetVisualModel();
                     if (model) {
@@ -95,7 +101,6 @@ void GUIImplVSG::Init(UI& ui, chrono::ChSystem* system, const char* title) {
         }
     }
 
-    // Create mooring viz early so the GUI component can read its adaptive range.
     if (!mooring_viz_)
         mooring_viz_ = std::make_unique<MooringLinesViz>();
 
@@ -103,9 +108,21 @@ void GUIImplVSG::Init(UI& ui, chrono::ChSystem* system, const char* title) {
         pVis.get(), ui.simulationStarted, viewer_settings_.get(),
         mooring_viz_.get()));
 
+    std::cerr << "[VSG] Stage 3: pVis->Initialize() (Vulkan device + scene compile)" << std::endl;
     pVis->Initialize();
 
-    // Add fill light after initialization (scene must exist first).
+    // Validate that Initialize() produced a usable scene graph.
+    auto scene = pVis->GetVSGScene();
+    if (!scene) {
+        std::cerr << "[VSG] FATAL: pVis->Initialize() completed but GetVSGScene() is null"
+                  << std::endl;
+        throw std::runtime_error(
+            "VSG initialization failed: scene graph is null after Initialize(). "
+            "This may be caused by GPU driver issues or missing Vulkan support. "
+            "Try running with --nogui.");
+    }
+
+    std::cerr << "[VSG] Stage 4: AddFillLight + scene ready" << std::endl;
     AddFillLight(pVis.get());
 }
 
