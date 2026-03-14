@@ -26,7 +26,8 @@ enum class HydroComponentType {
     Hydrostatics,   ///< Hydrostatic restoring forces and buoyancy
     Radiation,      ///< Radiation damping (RIRF convolution)
     Excitation,     ///< Wave excitation forces
-    Mooring         ///< Mooring forces (e.g. MoorDyn)
+    Mooring,        ///< Mooring forces (e.g. MoorDyn)
+    LinearDamping   ///< User-specified per-DOF linear damping
 };
 
 /**

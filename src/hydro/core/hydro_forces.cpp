@@ -65,6 +65,8 @@ BodyForces HydroForces::Evaluate(const SystemState& state, double time) {
                     profile_stats_.mooring_seconds += elapsed;
                     profile_stats_.mooring_calls++;
                     break;
+                case HydroComponentType::LinearDamping:
+                    break;
             }
         } else {
             // Fast path: no timing overhead

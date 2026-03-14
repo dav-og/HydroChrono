@@ -17,4 +17,7 @@
 #define M_PI_2 1.57079632679489661923
 #endif
 
+/// Radians to degrees (180 / pi)
+inline constexpr double kRadToDeg = 180.0 / M_PI;
+
 #endif  // HYDROC_MATH_CONSTANTS_H

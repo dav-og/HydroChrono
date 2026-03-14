@@ -389,6 +389,9 @@ set(HC_SOURCES
     src/hydro/waves/wave_utilities.cpp
     src/hydro/waves/regular_wave.cpp
     src/hydro/waves/irregular_wave.cpp
+    src/hydro/waves/component_sampler.cpp
+    src/hydro/waves/linear_wave_kinematics.cpp
+    src/hydro/waves/linear_directional_wave_field.cpp
     src/hydro/radiation/radiation_rirf_processing.cpp
     src/hydro/radiation/radiation_rirf_convolution.cpp
     src/hydro/radiation/radiation_ss_model.cpp
@@ -402,6 +405,7 @@ set(HC_SOURCES
     src/hydro/force_components/radiation_component.cpp
     src/hydro/force_components/radiation_ss_component.cpp
     src/hydro/force_components/excitation_component.cpp
+    src/hydro/force_components/linear_damping_component.cpp
     # Logging module (consolidated under src/hydro/logging/)
     src/hydro/logging/logger_backend.cpp
     src/hydro/logging/logging.cpp

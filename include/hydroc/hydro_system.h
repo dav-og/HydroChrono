@@ -30,6 +30,7 @@
 #include <hydroc/core/hydro_types.h>
 
 // Standard includes
+#include <array>
 #include <cstdio>
 #include <filesystem>
 #include <limits>
@@ -461,6 +462,12 @@ class HydroSystem {
         moordyn_config_ = config;
     }
 
+    /// Set per-body linear damping coefficients [surge, sway, heave, roll, pitch, yaw].
+    /// One entry per body.  Units: N·s/m (translational) or N·m·s/rad (rotational).
+    void SetLinearDamping(const std::vector<std::array<double, 6>>& per_body) {
+        linear_damping_ = per_body;
+    }
+
     /**
      * @brief Get current mooring line node positions and tension for visualization.
      *
@@ -478,6 +485,10 @@ class HydroSystem {
      * Forces are computed once per timestep and cached; subsequent calls within the same
      * timestep return the cached value.
      *
+     * Includes runtime stability checks: body state divergence detection and force NaN/Inf
+     * validation. When divergence is detected, forces are zeroed and the `diverged_` flag
+     * is set. Callers can query HasDiverged() to terminate gracefully.
+     *
      * @note **1-Based Body Indexing**: The body index `b` is 1-based (body1 → b=1, body2 → b=2, etc.)
      *       to match Chrono's body naming convention. This is intentional and matches how
      *       ForceFunc6d parses body names like "body1", "body2", etc.
@@ -490,6 +501,11 @@ class HydroSystem {
      * @throws std::out_of_range if b or i are out of valid range.
      */
     double CoordinateFuncForBody(int b, int i);
+
+    /// Returns true if the simulation has diverged (NaN/Inf forces or body state exceeds
+    /// physical thresholds). Once set, all subsequent force evaluations return zero.
+    /// Both YAML and C++ API callers should check this to terminate gracefully.
+    bool HasDiverged() const { return diverged_; }
 
     // Hydrodynamics profiling accessors
     HydroProfileStats GetProfileStats() const { return profile_stats_; }
@@ -537,6 +553,20 @@ class HydroSystem {
     
     // Track if we've already reported NaN (to avoid spamming)
     bool nan_reported_ = false;
+
+    // Runtime stability: divergence detection
+    bool diverged_ = false;
+    bool divergence_logged_ = false;
+    static constexpr double kMaxPosition_m    = 200.0;    ///< Body position magnitude limit [m]
+    static constexpr double kMaxVelocity_ms   = 20.0;     ///< Body translational velocity limit [m/s]
+    static constexpr double kMaxAngVel_rads   = 5.0;      ///< Body angular velocity limit [rad/s]
+    static constexpr double kMaxRollPitch_rad = 1.5708;   ///< Roll/pitch capsize limit [rad] (90 deg)
+    static constexpr double kMaxForceMagnitude = 1.0e10;  ///< Per-DOF force magnitude limit [N or N.m]
+
+    /// Check cached_state_ for diverged body states. Sets diverged_ if triggered.
+    void CheckBodyStateDivergence();
+    /// Check total_force_ for NaN/Inf or absurdly large values. Sets diverged_ if triggered.
+    void CheckForceValidity();
 
     // Cached SystemState: built once per time step and reused by all force computations
     hydrochrono::hydro::SystemState cached_state_;
@@ -630,6 +660,8 @@ class HydroSystem {
     // Internal helper: constructs hydro_forces_ and chrono_coupler_ once.
     // Subsequent calls are no-ops. Called automatically by CoordinateFuncForBody().
     void EnsureHydroForcesAndCoupler();
+
+    std::vector<std::array<double, 6>> linear_damping_;
 
 #ifdef HYDROCHRONO_HAVE_MOORDYN
     MoorDynConfig moordyn_config_;
