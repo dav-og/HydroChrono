@@ -313,6 +313,7 @@ def write_bemio_h5(
         else:
             sp.create_dataset("water_depth", data=_scalar(WATER_DEPTH))
         sp.create_dataset("w", data=_col(omega))
+        sp.create_dataset("wave_dir", data=_col(np.degrees(wave_dirs)))
 
         for b in range(n_bodies):
             body_name = f"body{b + 1}"

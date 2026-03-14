@@ -19,13 +19,16 @@
 #include <hydroc/waves/wave_base.h>
 #include <hydroc/waves/regular_wave.h>
 #include <hydroc/waves/irregular_wave.h>
+#include <hydroc/waves/linear_directional_wave_field.h>
 #include <hydroc/logging.h>
 #include <hydroc/core/system_state.h>
+#include <hydroc/math_constants.h>
 #include "chrono/chrono_state_utils.h"
 #include "force_components/hydrostatics_component.h"
 #include "force_components/radiation_component.h"
 #include "force_components/radiation_ss_component.h"
 #include "force_components/excitation_component.h"
+#include "force_components/linear_damping_component.h"
 #ifdef HYDROCHRONO_HAVE_MOORDYN
 #include "force_components/mooring_component.h"
 #include "mooring/moordyn_wrapper.h"
@@ -342,16 +345,26 @@ void HydroSystem::AddWaves(std::shared_ptr<WaveBase> waves) {
         user_waves_->SetExcitationTruncationTime(excitation_truncation_time_);
     }
 
-    switch (user_waves_->GetWaveMode()) {
-        case WaveMode::regular: {
-            auto reg = std::static_pointer_cast<RegularWave>(user_waves_);
-            reg->AddH5Data(file_info_.GetRegularWaveInfos(), file_info_.GetSimulationInfo());
-            break;
-        }
-        case WaveMode::irregular: {
-            auto irreg = std::static_pointer_cast<IrregularWaves>(user_waves_);
-            irreg->AddH5Data(file_info_.GetIrregularWaveInfos(), file_info_.GetSimulationInfo());
-            break;
+    // Check for the new directional wave field first (uses its own H5 data path).
+    auto dir_field = std::dynamic_pointer_cast<LinearDirectionalWaveField>(user_waves_);
+    if (dir_field) {
+        dir_field->AddH5Data(file_info_.GetRegularWaveInfos(),
+                             file_info_.GetSimulationInfo(),
+                             file_info_.GetSimulationInfo().wave_directions);
+    } else {
+        switch (user_waves_->GetWaveMode()) {
+            case WaveMode::regular: {
+                auto reg = std::static_pointer_cast<RegularWave>(user_waves_);
+                reg->AddH5Data(file_info_.GetRegularWaveInfos(), file_info_.GetSimulationInfo());
+                break;
+            }
+            case WaveMode::irregular: {
+                auto irreg = std::dynamic_pointer_cast<IrregularWaves>(user_waves_);
+                if (irreg) {
+                    irreg->AddH5Data(file_info_.GetIrregularWaveInfos(), file_info_.GetSimulationInfo());
+                }
+                break;
+            }
         }
     }
 
@@ -582,6 +595,22 @@ void HydroSystem::EnsureHydroForcesAndCoupler() {
     // Excitation component (uses shared factory for consistent construction)
     components.push_back(CreateExcitationComponent());
 
+    // Optional per-body linear damping (skip if all coefficients are zero)
+    {
+        bool has_damping = false;
+        for (const auto& body_coeffs : linear_damping_) {
+            for (double c : body_coeffs) {
+                if (c != 0.0) { has_damping = true; break; }
+            }
+            if (has_damping) break;
+        }
+        if (has_damping) {
+            components.push_back(
+                std::make_unique<hydrochrono::hydro::LinearDampingComponent>(
+                    linear_damping_));
+        }
+    }
+
 #ifdef HYDROCHRONO_HAVE_MOORDYN
     if (moordyn_config_.enabled) {
         // Build initial state from current Chrono body positions
@@ -749,6 +778,61 @@ Eigen::VectorXd HydroSystem::ComputeForceWaves() {
 //   - DOF index `dof_index` is 0-based (0=surge, 1=sway, ..., 5=yaw)
 //   - Internal arrays use 0-based indexing; we convert b to 0-based below.
 
+void HydroSystem::CheckBodyStateDivergence() {
+    for (int bi = 0; bi < static_cast<int>(cached_state_.bodies.size()); ++bi) {
+        const auto& bs = cached_state_.bodies[bi];
+        const double pos_mag = bs.position.norm();
+        const double vel_mag = bs.linear_velocity.norm();
+        const double angvel_mag = bs.angular_velocity.norm();
+        const double roll  = std::abs(bs.orientation_rpy[0]);
+        const double pitch = std::abs(bs.orientation_rpy[1]);
+
+        bool bad = !std::isfinite(pos_mag) || !std::isfinite(vel_mag)
+                || !std::isfinite(angvel_mag) || !std::isfinite(roll) || !std::isfinite(pitch)
+                || pos_mag > kMaxPosition_m || vel_mag > kMaxVelocity_ms
+                || angvel_mag > kMaxAngVel_rads
+                || roll > kMaxRollPitch_rad || pitch > kMaxRollPitch_rad;
+
+        if (bad && !diverged_) {
+            diverged_ = true;
+            if (!divergence_logged_) {
+                divergence_logged_ = true;
+                LOG_ERROR("Simulation divergence detected at t="
+                    << prev_time << " s on body" << (bi + 1)
+                    << ": pos=" << pos_mag << " m, vel=" << vel_mag
+                    << " m/s, ang_vel=" << angvel_mag << " rad/s"
+                    << ", roll=" << (roll * kRadToDeg) << " deg"
+                    << ", pitch=" << (pitch * kRadToDeg) << " deg"
+                    << " (limits: " << kMaxPosition_m << " m, "
+                    << kMaxVelocity_ms << " m/s, " << kMaxAngVel_rads << " rad/s, "
+                    << (kMaxRollPitch_rad * kRadToDeg) << " deg roll/pitch)");
+            }
+            return;
+        }
+    }
+}
+
+void HydroSystem::CheckForceValidity() {
+    const int total_dofs = kDofPerBody * num_bodies_;
+    for (int i = 0; i < total_dofs; ++i) {
+        if (!std::isfinite(total_force_[i]) || std::abs(total_force_[i]) > kMaxForceMagnitude) {
+            const int body_idx = i / kDofPerBody;
+            const int dof = i % kDofPerBody;
+            if (!divergence_logged_) {
+                divergence_logged_ = true;
+                LOG_ERROR("Invalid force detected at t=" << prev_time
+                    << " s on body" << (body_idx + 1) << " DOF " << dof
+                    << " value=" << total_force_[i]
+                    << " (limit: " << kMaxForceMagnitude << ")"
+                    << " — zeroing all forces");
+            }
+            diverged_ = true;
+            std::fill(total_force_.begin(), total_force_.end(), 0.0);
+            return;
+        }
+    }
+}
+
 double HydroSystem::CoordinateFuncForBody(int b, int dof_index) {
     // Validate inputs: b is 1-based [1, num_bodies], dof_index is 0-based [0, 5]
     if (dof_index < 0 || dof_index >= kDofPerBody || b < 1 || b > num_bodies_) {
@@ -767,6 +851,11 @@ double HydroSystem::CoordinateFuncForBody(int b, int dof_index) {
         throw std::runtime_error("bodies_ array is empty or invalid in CoordinateFuncForBody");
     }
 
+    // Once diverged, return zero forces unconditionally.
+    if (diverged_) {
+        return 0.0;
+    }
+
     // Time-step caching: reuse forces if already computed this step
     if (bodies_[0]->GetChTime() == prev_time) {
         return total_force_[body_num_offset + dof_index];
@@ -778,6 +867,13 @@ double HydroSystem::CoordinateFuncForBody(int b, int dof_index) {
     // Build SystemState once for this timestep
     hydrochrono::hydro::chrono_coupling::BuildSystemStateFromChronoBodies(bodies_, cached_state_);
     cached_state_time_ = prev_time;
+
+    // Check body states for divergence before computing forces.
+    CheckBodyStateDivergence();
+    if (diverged_) {
+        std::fill(total_force_.begin(), total_force_.end(), 0.0);
+        return 0.0;
+    }
 
     // Ensure HydroForces + ChronoHydroCoupler are initialized
     EnsureHydroForcesAndCoupler();
@@ -806,6 +902,12 @@ double HydroSystem::CoordinateFuncForBody(int b, int dof_index) {
         for (int dof = 0; dof < kDofPerBody; ++dof) {
             total_force_[offset + dof] = body_forces[body_idx][dof];
         }
+    }
+
+    // Validate computed forces for NaN/Inf.
+    CheckForceValidity();
+    if (diverged_) {
+        return 0.0;
     }
 
 #ifdef HYDROCHRONO_DEBUG
